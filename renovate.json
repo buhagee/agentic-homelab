@@ -6,7 +6,7 @@
   ],
   "timezone": "Australia/Sydney",
   "prHourlyLimit": 0,
-  "platformAutomerge": false,
+  "platformAutomerge": true,
   "enabledManagers": [
     "custom.regex"
   ],
