@@ -205,6 +205,14 @@ if ! ufw status | grep -q "3000/tcp"; then
 else
   success "UFW: AdGuard web UI rule already present."
 fi
+# Port 3000 from Docker networks: Traefik reaches the host-mode AdGuard container
+# through host.docker.internal, whose source address is a Docker subnet.
+if ! ufw status | grep -q "3000.*172.16.0.0/12"; then
+  ufw allow from 172.16.0.0/12 to any port 3000 proto tcp comment "Docker networks -> AdGuard web UI"
+  success "UFW: AdGuard web UI reachable from Docker networks."
+else
+  success "UFW: Docker AdGuard web UI rule already present."
+fi
 # Port 53: DNS (LAN + any for external resolution)
 if ! ufw status | grep -q "53/udp"; then
   ufw allow from 192.168.0.0/16 to any port 53 comment "AdGuard DNS (LAN)"
@@ -378,5 +386,5 @@ echo ""
 echo "  Next steps:"
 echo "  1. bash scripts/start.sh  — deploy WireGuard client container"
 echo "  2. Verify tunnel: docker exec wireguard-home wg show"
-echo "  3. See aidlc-docs/construction/u-11/u-11-design.md for DNS cutover steps"
+echo "  3. Complete the DNS cutover in the AdGuard admin UI"
 echo ""

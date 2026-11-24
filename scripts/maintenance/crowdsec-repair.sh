@@ -142,13 +142,13 @@ if [[ "$ORACLE_MODE" == "true" ]]; then
   # Verify external access
   info "Verifying external access..."
   HTTP_CODE="$(curl -so /dev/null -w '%{http_code}' --max-time 15 \
-    https://files.${QACEY_DOMAIN} 2>/dev/null || echo "000")"
+    https://vault.${QACEY_DOMAIN} 2>/dev/null || echo "000")"
   if [[ "$HTTP_CODE" == "200" || "$HTTP_CODE" == "302" ]]; then
     success "External access OK (HTTP $HTTP_CODE) — bouncer is working correctly."
   else
     warn "External access returned HTTP $HTTP_CODE — check oracle-traefik logs"
     warn "Note: HTTP 000 immediately after restart is normal (Traefik still binding ports)"
-    warn "Wait 10s and run: curl -sI https://files.${QACEY_DOMAIN} | head -1"
+    warn "Wait 10s and run: curl -sI https://vault.${QACEY_DOMAIN} | head -1"
   fi
 
 else
@@ -219,7 +219,7 @@ else
 
   info "Verifying services respond..."
   HTTP_CODE="$(curl -so /dev/null -w '%{http_code}' --max-time 10 \
-    https://files.${QACEY_DOMAIN} 2>/dev/null || echo "000")"
+    https://vault.${QACEY_DOMAIN} 2>/dev/null || echo "000")"
   if [[ "$HTTP_CODE" == "200" || "$HTTP_CODE" == "302" ]]; then
     success "Services OK (HTTP $HTTP_CODE)"
   else

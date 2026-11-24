@@ -62,8 +62,8 @@ class RenovatePolicyTests(unittest.TestCase):
     def test_pr_creation_is_not_throttled(self):
         self.assertEqual(self.config["prHourlyLimit"], 0)
 
-    def test_platform_automerge_is_disabled(self):
-        self.assertFalse(self.config["platformAutomerge"])
+    def test_platform_automerge_is_enabled(self):
+        self.assertTrue(self.config["platformAutomerge"])
 
     def test_top_level_automerge_is_disabled(self):
         self.assertFalse(self.config["automerge"])
@@ -89,6 +89,8 @@ class RenovatePolicyTests(unittest.TestCase):
         ]
         self.assertTrue(major_rules)
         for rule in major_rules:
+            if "anomalyco/opencode" in rule.get("matchPackageNames", []):
+                continue
             self.assertFalse(rule.get("automerge", False))
 
     def test_vulnerability_alerts_enabled(self):
@@ -102,6 +104,48 @@ class RenovatePolicyTests(unittest.TestCase):
         self.assertIn("client-id: ${{ vars.RENOVATE_APP_CLIENT_ID }}", workflow)
         self.assertIn("secrets.RENOVATE_APP_PRIVATE_KEY", workflow)
         self.assertNotIn("RENOVATE_TOKEN", workflow)
+
+    def test_renovate_runs_once_a_day(self):
+        workflow = (REPO_ROOT / ".github" / "workflows" / "renovate.yml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('cron: "0 18 * * *"', workflow)
+
+    def opencode_rules(self):
+        return [
+            rule
+            for rule in self.config["packageRules"]
+            if "anomalyco/opencode" in rule.get("matchPackageNames", [])
+        ]
+
+    def test_opencode_patch_automerge_is_immediate(self):
+        rule = next(r for r in self.opencode_rules() if r.get("matchUpdateTypes") == ["patch"])
+        self.assertTrue(rule["automerge"])
+        self.assertNotIn("minimumReleaseAge", rule)
+        self.assertNotIn("platformAutomerge", rule)
+
+    def test_opencode_minor_waits_two_days(self):
+        rule = next(r for r in self.opencode_rules() if r.get("matchUpdateTypes") == ["minor"])
+        self.assertTrue(rule["automerge"])
+        self.assertFalse(rule["platformAutomerge"])
+        self.assertEqual(rule["minimumReleaseAge"], "2 days")
+
+    def test_opencode_major_waits_a_week(self):
+        rule = next(r for r in self.opencode_rules() if r.get("matchUpdateTypes") == ["major"])
+        self.assertTrue(rule["automerge"])
+        self.assertFalse(rule["platformAutomerge"])
+        self.assertEqual(rule["minimumReleaseAge"], "7 days")
+
+    def test_ci_runs_the_opencode_smoke_job(self):
+        workflow = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+        self.assertIn("opencode-smoke:", workflow)
+        self.assertIn("opencode --version", workflow)
+
+    def test_ruleset_requires_the_smoke_check(self):
+        ruleset = (REPO_ROOT / "scripts" / "setup" / "github-main-ruleset.json").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('"context": "opencode-smoke"', ruleset)
 
 
 if __name__ == "__main__":
