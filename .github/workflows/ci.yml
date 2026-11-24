@@ -146,10 +146,10 @@ jobs:
       - name: Check the binary and CLI load
         run: |
           set -a; . ./versions.env; set +a
-          version="$(docker run --rm opencode-smoke opencode --version)"
+          version="$(docker run --rm -e HOME=/tmp opencode-smoke opencode --version)"
           echo "reported: ${version}"
           case "${version}" in
             *"${OPENCODE_V2_VERSION}"*) ;;
             *) echo "version mismatch: expected ${OPENCODE_V2_VERSION}" >&2; exit 1 ;;
           esac
-          docker run --rm opencode-smoke opencode --help >/dev/null
+          docker run --rm -e HOME=/tmp opencode-smoke opencode --help >/dev/null
