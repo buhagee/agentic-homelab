@@ -25,6 +25,17 @@ class OracleDeployContractTests(unittest.TestCase):
         self.assertIn("${QACEY_DOMAIN}", text)
         self.assertNotIn("example.com", text)
 
+    def test_next_steps_use_configured_values(self):
+        text = ORACLE.read_text(encoding="utf-8")
+        self.assertIn("${QACEY_DOMAIN}", text)
+        self.assertNotIn("example.com", text)
+        self.assertNotIn("203.0.113.10", text)
+
+    def test_repair_probes_a_live_host(self):
+        text = REPAIR.read_text(encoding="utf-8")
+        self.assertNotIn("files.${QACEY_DOMAIN}", text)
+        self.assertIn("vault.${QACEY_DOMAIN}", text)
+
 
 if __name__ == "__main__":
     unittest.main()

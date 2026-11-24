@@ -6,7 +6,7 @@
   ],
   "timezone": "Australia/Sydney",
   "prHourlyLimit": 0,
-  "platformAutomerge": false,
+  "platformAutomerge": true,
   "enabledManagers": [
     "custom.regex"
   ],
@@ -111,7 +111,38 @@
       "matchPackageNames": [
         "anomalyco/opencode"
       ],
-      "automerge": false
+      "matchUpdateTypes": [
+        "patch"
+      ],
+      "automerge": true
+    },
+    {
+      "matchDatasources": [
+        "github-releases"
+      ],
+      "matchPackageNames": [
+        "anomalyco/opencode"
+      ],
+      "matchUpdateTypes": [
+        "minor"
+      ],
+      "automerge": true,
+      "platformAutomerge": false,
+      "minimumReleaseAge": "2 days"
+    },
+    {
+      "matchDatasources": [
+        "github-releases"
+      ],
+      "matchPackageNames": [
+        "anomalyco/opencode"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "automerge": true,
+      "platformAutomerge": false,
+      "minimumReleaseAge": "7 days"
     }
   ],
   "vulnerabilityAlerts": {

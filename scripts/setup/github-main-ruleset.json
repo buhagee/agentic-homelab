@@ -35,7 +35,8 @@
           { "context": "images" },
           { "context": "renovate-config" },
           { "context": "secrets" },
-          { "context": "automerge-policy" }
+          { "context": "automerge-policy" },
+          { "context": "opencode-smoke" }
         ]
       }
     }
