@@ -5,6 +5,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[3]
 FIRST_TIME_SETUP = REPO_ROOT / "scripts" / "setup" / "first-time-setup.sh"
 INSTALL_BACKUP = REPO_ROOT / "scripts" / "maintenance" / "install-backup.sh"
+SERVER_SETUP = REPO_ROOT / "scripts" / "setup" / "server-setup-home.sh"
 
 
 class BootstrapContractTests(unittest.TestCase):
@@ -43,6 +44,12 @@ class BootstrapContractTests(unittest.TestCase):
                 (REPO_ROOT / "infrastructure" / "backup" / unit_name).is_file(),
                 f"missing backup unit fixture: {unit_name}",
             )
+
+    def test_adguard_web_ui_is_reachable_from_docker_networks(self) -> None:
+        script = SERVER_SETUP.read_text(encoding="utf-8")
+        self.assertIn(
+            "ufw allow from 172.16.0.0/12 to any port 3000 proto tcp", script
+        )
 
 
 if __name__ == "__main__":

@@ -62,8 +62,8 @@ class RenovatePolicyTests(unittest.TestCase):
     def test_pr_creation_is_not_throttled(self):
         self.assertEqual(self.config["prHourlyLimit"], 0)
 
-    def test_platform_automerge_is_disabled(self):
-        self.assertFalse(self.config["platformAutomerge"])
+    def test_platform_automerge_is_enabled(self):
+        self.assertTrue(self.config["platformAutomerge"])
 
     def test_top_level_automerge_is_disabled(self):
         self.assertFalse(self.config["automerge"])
@@ -102,6 +102,12 @@ class RenovatePolicyTests(unittest.TestCase):
         self.assertIn("client-id: ${{ vars.RENOVATE_APP_CLIENT_ID }}", workflow)
         self.assertIn("secrets.RENOVATE_APP_PRIVATE_KEY", workflow)
         self.assertNotIn("RENOVATE_TOKEN", workflow)
+
+    def test_renovate_runs_once_a_day(self):
+        workflow = (REPO_ROOT / ".github" / "workflows" / "renovate.yml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('cron: "0 18 * * *"', workflow)
 
 
 if __name__ == "__main__":

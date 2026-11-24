@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# scripts/oracle-deploy.sh
+# scripts/deploy/oracle-deploy.sh
 # Deploy the Qacey Oracle VPS stack (reverse proxy + monitoring).
 #
 # Architecture:
 #   wireguard-oracle  — WireGuard server; home server connects as peer
-#   oracle-traefik    — TLS termination for *.example.com; forwards via WireGuard
+#   oracle-traefik    — TLS termination for the configured domain; forwards via WireGuard
 #   uptime-kuma       — External uptime monitoring
 #
 # Run ON the Oracle VPS:
-#   sudo bash scripts/oracle-deploy.sh
+#   sudo bash scripts/deploy/oracle-deploy.sh
 #
 # Pre-requisites:
-#   1. sudo bash scripts/server-setup-oracle.sh  (OS hardening + Docker)
+#   1. sudo bash scripts/setup/server-setup-oracle.sh  (OS hardening + Docker)
 #   2. Copy .env.oracle.example → .env.oracle and fill in all values
 #
 # Re-run any time to update config or pull new images.
@@ -39,7 +39,7 @@ cd "$REPO_ROOT"
 
 # Required host values. Validate before any container is removed.
 set +u
-source <(grep -E "^QACEY_DOMAIN=|^HOME_LAN_CIDR=" "$ENV_FILE" 2>/dev/null || true)
+source <(grep -E "^QACEY_DOMAIN=|^HOME_LAN_CIDR=|^ORACLE_IP=" "$ENV_FILE" 2>/dev/null || true)
 set -u
 if [[ -z "${QACEY_DOMAIN:-}" ]]; then
   error "QACEY_DOMAIN not set in .env.oracle"
@@ -293,8 +293,8 @@ echo "  Next steps"
 echo "═══════════════════════════════════════════════════"
 echo ""
 echo "  1. On the home server, run:"
-echo "     sudo bash scripts/server-setup-home.sh"
-echo "     sudo bash scripts/setup-wireguard-home.sh"
+echo "     sudo bash scripts/setup/server-setup-home.sh"
+echo "     sudo bash scripts/setup/setup-wireguard-home.sh"
 echo "     bash scripts/start.sh"
 echo ""
 echo "  2. Verify tunnel from Oracle VPS:"
@@ -302,11 +302,11 @@ echo "     docker exec wireguard-oracle wg show"
 echo "     (should show home server peer with a recent handshake)"
 echo ""
 echo "  3. Cloudflare DNS cutover:"
-echo "     - Add wildcard A record: *.example.com → 203.0.113.10 (grey cloud)"
-echo "     - status.example.com already points here — no change needed"
+echo "     - Add wildcard A record: *.${QACEY_DOMAIN} → ${ORACLE_IP:-<oracle-public-ip>} (grey cloud)"
+echo "     - platform-status.${QACEY_DOMAIN} already points here — no change needed"
 echo ""
 echo "  4. Verify external access:"
-echo "     curl -I https://files.example.com"
+echo "     curl -I https://vault.${QACEY_DOMAIN}"
 echo ""
-echo "  5. Enable AdGuard DHCP (see u-11-design.md for steps)"
+echo "  5. Enable AdGuard DHCP in the AdGuard admin UI"
 echo ""
