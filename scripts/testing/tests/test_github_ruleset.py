@@ -11,6 +11,7 @@ REQUIRED_CHECKS = {
     "renovate-config",
     "secrets",
     "automerge-policy",
+    "opencode-smoke",
 }
 
 

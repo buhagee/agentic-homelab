@@ -40,6 +40,7 @@ Required status checks:
 - `renovate-config`
 - `secrets`
 - `automerge-policy`
+- `opencode-smoke`
 
 The ruleset also blocks direct pushes, force pushes, and branch deletion, and
 requires conversation resolution. It has no bypass actors, so admins are bound
