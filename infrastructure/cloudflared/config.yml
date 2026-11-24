@@ -1,0 +1,13 @@
+# Cloudflare Tunnel config — reference only.
+# In Docker mode, cloudflared uses --token flag (token embeds tunnel ID + credentials).
+# This file is kept for documentation purposes only.
+#
+# tunnel: ${CLOUDFLARE_TUNNEL_ID}
+# credentials-file: /etc/cloudflared/credentials.json
+#
+# ingress:
+#   - hostname: "*.${QACEY_DOMAIN}"
+#     service: https://traefik:443
+#     originRequest:
+#       noTLSVerify: true
+#   - service: http_status:404

@@ -1,0 +1,11 @@
+{
+  "intervals": {
+    "url": "http://mcp-intervals:8000/mcp",
+    "transport": "streamable_http"
+  },
+  "google_workspace": {
+    "env": {
+      "GOOGLE_WORKSPACE_USER_LABEL": "Justin"
+    }
+  }
+}

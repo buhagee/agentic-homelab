@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Start both Hermes dashboard (9119) and gateway (8642).
+# Dashboard runs in background; gateway is foreground/PID-1 process.
+# Dashboard binds HERMES_DASHBOARD_HOST (default 127.0.0.1); the Traefik route
+# sets it to 0.0.0.0 and supplies HERMES_DASHBOARD_USERNAME/_PASSWORD so a
+# public bind is never unauthenticated. Gateway API binds only to the
+# dedicated peer net regardless.
+set -euo pipefail
+
+# Prevent gateway locks, session files, and other runtime state from being
+# created group/world-readable when the host volume is shared.
+umask 077
+
+LOCK_DIR="${HOME}/.local/state/hermes/gateway-locks"
+if [[ -d "$LOCK_DIR" ]]; then
+	find "$LOCK_DIR" -type d -exec chmod 700 {} +
+	find "$LOCK_DIR" -type f -exec chmod 600 {} +
+fi
+
+HERMES=/opt/hermes/.venv/bin/hermes
+DASHBOARD_HOST="${HERMES_DASHBOARD_HOST:-127.0.0.1}"
+
+$HERMES dashboard --host "$DASHBOARD_HOST" --port 9119 --no-open &
+
+exec $HERMES gateway run

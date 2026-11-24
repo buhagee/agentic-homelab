@@ -1,0 +1,73 @@
+http:
+  middlewares:
+    redirect-https:
+      redirectScheme:
+        scheme: https
+        permanent: true
+
+    secure-headers:
+      headers:
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        stsPreload: true
+        frameDeny: false
+        contentTypeNosniff: true
+        browserXssFilter: true
+        referrerPolicy: "strict-origin-when-cross-origin"
+        customResponseHeaders:
+          X-Robots-Tag: "noindex, nofollow"
+
+    ratelimit-register:
+      rateLimit:
+        average: 5
+        burst: 2
+        period: 1m
+        sourceCriterion:
+          ipStrategy:
+            depth: 1
+
+    # ── U-11: Global rate limit (applied at websecure entrypoint) ─────────────
+    # Raised from 100/50 to 500/200 — Immich People page fires 100+ simultaneous
+    # thumbnail requests which was triggering 429s on the Oracle Traefik.
+    # Still protects against external DoS; personal household use only.
+    global-ratelimit:
+      rateLimit:
+        average: 500
+        burst: 200
+        period: 10s
+        sourceCriterion:
+          ipStrategy:
+            depth: 1
+
+    internal-only:
+      ipAllowList:
+        sourceRange:
+          - "10.0.0.0/8"
+          - "172.16.0.0/12"
+          - "192.168.0.0/16"
+
+    # ── U-12: CrowdSec bouncer + AppSec WAF ──────────────────────────────────────
+    # Uses maxlerebourg/crowdsec-bouncer-traefik-plugin (Traefik plugin, runs in-process).
+    # Replaces the old fbonalair ForwardAuth sidecar container.
+    # crowdsecAppsecEnabled: forwards each request to CrowdSec AppSec listener on :7422
+    # for real-time WAF inspection (OWASP CRS virtual patching + generic attack rules).
+    # crowdsecAppsecUnreachableBlock: false = fail-open if AppSec is down (availability > strict).
+    # ForwardedHeadersTrustedIPs: trust X-Forwarded-For from Oracle Traefik via WireGuard tunnel.
+    # NOTE: crowdsecLapiKey is written by scripts/start.sh from CROWDSEC_LAPI_KEY in .env
+    # (Traefik file provider does not support env var substitution).
+    crowdsec-bouncer:
+      plugin:
+        bouncer:
+          enabled: true
+          crowdsecLapiKey: "__CROWDSEC_LAPI_KEY__"
+          crowdsecLapiHost: "crowdsec:8080"
+          crowdsecMode: "stream"
+          crowdsecAppsecEnabled: true
+          crowdsecAppsecHost: "crowdsec:7422"
+          crowdsecAppsecFailureBlock: false
+          crowdsecAppsecUnreachableBlock: false
+          forwardedHeadersTrustedIPs:
+            - "10.100.0.0/24"
+            - "172.16.0.0/12"
+            - "192.168.0.0/16"
+

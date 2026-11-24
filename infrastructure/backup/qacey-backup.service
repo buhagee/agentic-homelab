@@ -1,0 +1,15 @@
+[Unit]
+Description=Qacey Platform Backup (Local Mirror + B2)
+Documentation=https://github.com/buhagee/agentic-homelab
+After=qacey-db-backup.service
+Wants=qacey-db-backup.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash __PLATFORM_DIR__/scripts/maintenance/backup.sh
+User=root
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

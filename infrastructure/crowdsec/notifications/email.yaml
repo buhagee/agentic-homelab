@@ -1,0 +1,25 @@
+# CrowdSec email notification plugin.
+# CrowdSec expands ${ENV_VAR} outside the format template, so the password stays
+# in the container environment and never appears in this file.
+type: email
+name: email_notif
+log_level: info
+
+format: |
+  <html><body>
+  {{range . -}}{{$alert := . -}}{{range .Decisions -}}
+  <p><b>{{.Value}}</b> banned for {{.Duration}} after {{.Scenario}}.</p>
+  {{end -}}{{end -}}
+  </body></html>
+
+smtp_host: ${SMTP_HOST}
+smtp_port: ${SMTP_PORT}
+smtp_username: ${SMTP_USER}
+smtp_password: ${SMTP_PASSWORD}
+auth_type: login
+sender_name: Qacey CrowdSec
+sender_email: ${ALERT_EMAIL_FROM}
+email_subject: Qacey CrowdSec ban
+receiver_emails:
+  - ${ALERT_EMAIL_TO}
+encryption_type: ${SMTP_ENCRYPTION}

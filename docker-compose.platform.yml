@@ -1,0 +1,1480 @@
+# ============================================================================
+# docker-compose.platform.yml — Qacey Platform
+# ============================================================================
+# Standalone compose file for the Qacey platform layer. Previously used as
+# an override for LIA-Qacey (decommissioned in U-04). Now runs standalone.
+#
+# IMAGE VERSIONS: All image version tags are defined in versions.env (repo root).
+# Do NOT hardcode version tags here — always use the ${VAR} references and
+# update versions.env when bumping any image.
+#
+# Usage:
+#   docker compose \
+#     -f docker-compose.platform.yml \
+#     --env-file .env \
+#     --env-file versions.env \
+#     up -d
+#
+# Or via scripts/start.sh which handles this automatically.
+# ============================================================================
+
+services:
+
+  ollama:
+    image: ollama/ollama:${OLLAMA_VERSION}
+    container_name: ollama
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "127.0.0.1:11434:11434"
+      - "${HOME_SERVER_IP}:11434:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+    networks:
+      - qacey-opencode-embeddings
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 8g
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── OpenCode V2 — remote coding app over HTTPS ────────────────────────────
+  opencode-v2:
+    image: qacey/opencode-v2:local
+    build:
+      context: ./services/opencode
+      args:
+        OPENCODE_V2_VERSION: ${OPENCODE_V2_VERSION}
+        OPENCODE_V2_NODE_VERSION: ${OPENCODE_V2_NODE_VERSION}
+        OPENCODE_V2_PNPM_VERSION: ${OPENCODE_V2_PNPM_VERSION}
+    container_name: opencode-v2
+    init: true
+    restart: unless-stopped
+    user: "1000:1000"
+    working_dir: /workspace
+    command: ["serve", "--hostname", "0.0.0.0", "--port", "4096"]
+    environment:
+      HOME: /home/opencode
+      PATH: /home/opencode/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      OPENCODE_PASSWORD: ${OPENCODE_PASSWORD}
+      OLLAMA_HOST: http://ollama:11434
+      GSTACK_ROOT: /home/opencode/.local/share/gstack/home/.config/opencode/skills/gstack
+      GSTACK_SKIP_PLAYWRIGHT: "1"
+    volumes:
+      - ${PLATFORM_DIR}/..:/workspace
+      - /mnt/ssd/qacey/hermes/opencode-v2:/home/opencode
+      - ./infrastructure/opencode/config/opencode.json:/home/opencode/.config/opencode/opencode.json:ro
+      - ./infrastructure/opencode/config/codebase-index.json:/home/opencode/.config/opencode/codebase-index.json:ro
+      - ./infrastructure/opencode/config/instructions:/home/opencode/.config/opencode/instructions:ro
+      - ./infrastructure/opencode/config/model-pins:/home/opencode/.config/opencode/model-pins:ro
+      - ./infrastructure/opencode/config/skills:/home/opencode/.config/opencode/skills:ro
+      - ./infrastructure/opencode/config/commands:/home/opencode/.config/opencode/commands:ro
+    networks:
+      qacey-opencode: {}
+      qacey-opencode-mcp: {}
+      qacey-opencode-control: {}
+      qacey-opencode-embeddings: {}
+      opencode-egress: {}
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,exec,size=512m
+      - /workspace/.agents/private:rw,noexec,nosuid,nodev,size=1m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 16g
+          pids: 512
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=qacey-opencode"
+      - "traefik.http.routers.opencode.rule=Host(`opencode.${QACEY_DOMAIN}`)"
+      - "traefik.http.routers.opencode.entrypoints=websecure"
+      - "traefik.http.routers.opencode.tls.certresolver=${CERT_RESOLVER}"
+      - "traefik.http.routers.opencode.middlewares=secure-headers@file"
+      - "traefik.http.services.opencode.loadbalancer.server.port=4096"
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import socket; socket.create_connection(('127.0.0.1', 4096), 2).close()\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  opencode-docker-control:
+    image: qacey/opencode-docker-control:local
+    build:
+      context: ./services/opencode-docker-control
+    container_name: opencode-docker-control
+    restart: unless-stopped
+    user: "1000:1000"
+    group_add:
+      - "${DOCKER_GID:-983}"
+    environment:
+      QACEY_PLATFORM_ROOT: ${PLATFORM_DIR}
+      QACEY_CONTROL_APPROVED: /run/qacey-control/approved.json
+      DOCKER_HOST: unix:///var/run/docker.sock
+      HOST: 0.0.0.0
+      PORT: "8000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${PLATFORM_DIR}:${PLATFORM_DIR}:ro
+      - ${HOME}/.local/share/qacey-opencode-control:/run/qacey-control:ro
+    networks:
+      qacey-opencode-control: {}
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          pids: 128
+
+
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import socket; socket.create_connection(('127.0.0.1', 8000), 2).close()\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+  traefik:
+    image: traefik:${TRAEFIK_VERSION}
+    container_name: traefik
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "80:80"
+      - "443:443"
+      - "127.0.0.1:8080:8080"   # cloudflared entrypoint (host-local only)
+    environment:
+      - ACME_EMAIL=${ACME_EMAIL}
+      - TRAEFIK_CERTIFICATESRESOLVERS_CLOUDFLARE_ACME_EMAIL=${ACME_EMAIL}
+      - TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL=${ACME_EMAIL}
+      - QACEY_DOMAIN=${QACEY_DOMAIN}
+      - CF_DNS_API_TOKEN=${CF_DNS_API_TOKEN}
+      - DESEC_TOKEN=${DESEC_TOKEN}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /mnt/ssd/qacey/traefik/certs/acme.json:/acme.json
+      - ${PLATFORM_DIR}/infrastructure/traefik/config/traefik.yml:/traefik.yml:ro
+      - ${PLATFORM_DIR}/infrastructure/traefik/config/dynamic:/dynamic:ro
+      - /mnt/ssd/qacey/traefik/logs:/var/log/traefik
+    extra_hosts:
+      - "host-gateway:host-gateway"
+      - "host.docker.internal:${HOME_SERVER_IP}"
+    networks:
+      qacey-proxy:
+        ipv4_address: ${TRAEFIK_PROXY_IP}   # fixed IP — used by wireguard-home DNAT rules
+      qacey-internal:
+      qacey-sandbox-edge:
+      qacey-opencode:
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=qacey-proxy"
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /dynamic/middlewares.yml && traefik healthcheck --ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  cloudflared:
+    image: cloudflare/cloudflared:${CLOUDFLARED_VERSION}
+    container_name: cloudflared
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    # NOTE (U-11): cloudflared is kept as fallback during WireGuard migration.
+    # Remove this service after WireGuard tunnel is verified stable.
+    # See aidlc-docs/construction/u-11/u-11-design.md — "Cloudflared removal (deferred)"
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    networks:
+      - qacey-proxy
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── Platform additions: Paperless, MCP + Actual ─────────────────────────
+
+  paperless-postgres:
+    image: postgres:${POSTGRES_VERSION}
+    container_name: paperless-postgres
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      POSTGRES_USER: paperless
+      POSTGRES_PASSWORD: ${PAPERLESS_DB_PASSWORD}
+      POSTGRES_DB: paperless
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    volumes:
+      - /mnt/ssd/qacey/postgres/paperless:/var/lib/postgresql/data
+    networks:
+      - paperless-data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U paperless -d paperless || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  paperless-redis:
+    image: redis:${REDIS_VERSION}
+    container_name: paperless-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - paperless-data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 64m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  paperless:
+    image: ghcr.io/paperless-ngx/paperless-ngx:${PAPERLESS_VERSION}
+    container_name: paperless
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      PAPERLESS_REDIS: redis://paperless-redis:6379
+      PAPERLESS_DATABASE_HOST: paperless-postgres
+      PAPERLESS_DATABASE_USER: paperless
+      PAPERLESS_DATABASE_PASSWORD: ${PAPERLESS_DB_PASSWORD}
+      PAPERLESS_DATABASE_NAME: paperless
+      PAPERLESS_SECRET_KEY: ${PAPERLESS_SECRET_KEY}
+      PAPERLESS_URL: https://paperless.${QACEY_DOMAIN}
+      PAPERLESS_ALLOWED_HOSTS: paperless.${QACEY_DOMAIN}
+      PAPERLESS_CSRF_TRUSTED_ORIGINS: https://paperless.${QACEY_DOMAIN}
+      # Self-registration is disabled; create Paperless users administratively.
+      PAPERLESS_ACCOUNT_ALLOW_SIGNUPS: "false"
+      PAPERLESS_DISABLE_REGULAR_LOGIN: "false"
+      PAPERLESS_MEDIA_ROOT: /usr/src/paperless/media
+    volumes:
+      - /mnt/ssd/qacey/paperless/media:/usr/src/paperless/media
+      - /mnt/ssd/qacey/paperless/data:/usr/src/paperless/data
+    depends_on:
+      paperless-postgres:
+        condition: service_healthy
+      paperless-redis:
+        condition: service_healthy
+    networks:
+      - qacey-proxy
+      - qacey-internal
+      - paperless-data
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=qacey-proxy"
+      - "traefik.http.routers.paperless.rule=Host(`paperless.${QACEY_DOMAIN}`)"
+      - "traefik.http.routers.paperless.entrypoints=websecure"
+      - "traefik.http.routers.paperless.tls.certresolver=${CERT_RESOLVER}"
+      - "traefik.http.routers.paperless.middlewares=secure-headers@file"
+      - "traefik.http.routers.paperless-cf.rule=Host(`paperless.${QACEY_DOMAIN}`)"
+      - "traefik.http.routers.paperless-cf.entrypoints=cloudflared"
+      - "traefik.http.routers.paperless-cf.middlewares=secure-headers@file"
+      - "traefik.http.services.paperless.loadbalancer.server.port=8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  mcp-paperless:
+    # Dormant until PAPERLESS_API_TOKEN is configured. Start explicitly with
+    # --profile paperless-mcp after setting the token.
+    profiles: ["paperless-mcp"]
+    build:
+      context: ${PLATFORM_DIR}/services/mcp/paperless
+      dockerfile: Dockerfile
+    image: qacey/mcp-paperless:local
+    container_name: mcp-paperless
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      MCP_TRANSPORT: streamable-http
+      PAPERLESS_BASE_URL: http://paperless:8000
+      PAPERLESS_API_TOKEN: ${PAPERLESS_API_TOKEN:-}
+      FASTMCP_HOST: 0.0.0.0
+      FASTMCP_PORT: "8000"
+      HOST: 0.0.0.0
+    networks:
+      - qacey-proxy
+      - qacey-internal
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s --max-time 3 -o /dev/null http://127.0.0.1:8000/mcp"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── U-11: WireGuard (tunnel client — connects to Oracle VPS) ─────────────────
+  # Establishes an outbound WireGuard tunnel to the Oracle VPS.
+  # Oracle Traefik forwards all *.example.com traffic through this tunnel.
+  # No port forwarding needed on the home router — home server initiates outbound.
+  # Tunnel IP: 10.100.0.2/24 (Oracle VPS is 10.100.0.1)
+  wireguard-home:
+    image: lscr.io/linuxserver/wireguard:${WIREGUARD_VERSION}
+    container_name: wireguard-home
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Australia/Sydney
+    volumes:
+      - /mnt/ssd/qacey/wireguard/home:/config
+      - /lib/modules:/lib/modules:ro
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+    networks:
+      - qacey-proxy
+      - qacey-internal
+    mem_limit: 64m
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── U-09: AdGuard Home (local DNS + DHCP — split-horizon for *.example.com) ──
+  # network_mode: host is required for DHCP — AdGuard needs to bind to the physical
+  # LAN interface (eno1) to broadcast DHCP leases. With bridge networking it only
+  # sees Docker interfaces and cannot serve DHCP to LAN devices.
+  # DNS (port 53) and web UI (port 3000) are also bound directly on the host.
+  adguard:
+    image: adguard/adguardhome:${ADGUARD_VERSION}
+    container_name: adguard
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - /mnt/ssd/qacey/adguard/conf:/opt/adguardhome/conf
+      - /mnt/ssd/qacey/adguard/work:/opt/adguardhome/work
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:3000/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── U-10: CrowdSec ──────────────────────────────────────────────────────────
+
+  crowdsec:
+    image: crowdsecurity/crowdsec:${CROWDSEC_VERSION}
+    container_name: crowdsec
+    restart: unless-stopped
+    environment:
+      # U-12: added appsec-virtual-patching + appsec-generic-rules for AppSec WAF
+      - COLLECTIONS=crowdsecurity/traefik crowdsecurity/http-dos crowdsecurity/appsec-virtual-patching crowdsecurity/appsec-generic-rules
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - SMTP_ENCRYPTION=${SMTP_ENCRYPTION}
+      - ALERT_EMAIL_FROM=${ALERT_EMAIL_FROM}
+      - ALERT_EMAIL_TO=${ALERT_EMAIL_TO}
+      - DISABLE_ONLINE_API=true
+    volumes:
+      - /mnt/ssd/qacey/crowdsec/config:/etc/crowdsec
+      - /mnt/ssd/qacey/crowdsec/data:/var/lib/crowdsec/data
+      - /mnt/ssd/qacey/traefik/logs:/var/log/traefik:ro
+      - ${PLATFORM_DIR}/infrastructure/crowdsec/acquis.yaml:/etc/crowdsec/acquis.yaml:ro
+      - ${PLATFORM_DIR}/infrastructure/crowdsec/notifications/email.yaml:/etc/crowdsec/notifications/email.yaml:ro
+      - ${PLATFORM_DIR}/infrastructure/crowdsec/profiles.yaml:/etc/crowdsec/profiles.yaml:ro
+    ports:
+      # U-12: AppSec listener — Traefik plugin forwards requests here for WAF inspection
+      - "127.0.0.1:7422:7422"
+    networks:
+      - qacey-proxy
+      - qacey-internal
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 384m
+    healthcheck:
+      test: ["CMD-SHELL", "cscli lapi status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # cs-traefik-bouncer removed in U-12 — replaced by maxlerebourg/crowdsec-bouncer-traefik-plugin
+  # which runs inside the Traefik process (no separate container needed).
+  # The plugin handles both IP banning (LAPI) and WAF inspection (AppSec on :7422).
+
+  # ── U-04: Hermes Agent — Justin ───────────────────────────────────────────
+  hermes-justin:
+    build:
+      context: ${PLATFORM_DIR}/services/agent
+      dockerfile: Dockerfile
+      args:
+        HERMES_VERSION: ${HERMES_VERSION}
+    image: qacey/hermes-agent:local
+    container_name: hermes-justin
+    restart: unless-stopped
+    entrypoint: /opt/hermes/start.sh
+    user: "${HERMES_UID}:${HERMES_GID}"
+    depends_on:
+      - mnemo-postgres
+    environment:
+      GATEWAY_ALLOW_ALL_USERS: "false"
+      OPENCODE_GO_API_KEY: ${OPENCODE_GO_API_KEY}
+      OPENCODE_GO_BASE_URL: ${OPENCODE_GO_BASE_URL}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      OPENAI_API_KEY: ${OPENROUTER_API_KEY}
+      API_SERVER_ENABLED: "true"
+      API_SERVER_KEY: ${HERMES_API_KEY_JUSTIN}
+      # API binds only to hermes-peer; no host port or shared-network listener.
+      API_SERVER_HOST: 172.31.255.4
+      API_SERVER_PORT: "8642"
+      HERMES_UID: ${HERMES_UID}
+      HERMES_GID: ${HERMES_GID}
+      # Direct dashboard (Hermex 2.0 / hermes.${QACEY_DOMAIN}) — public bind
+      # requires an auth provider; the basic-auth plugin reads these two.
+      HERMES_DASHBOARD_HOST: 0.0.0.0
+      HERMES_DASHBOARD_BASIC_AUTH_USERNAME: ${HERMES_DASHBOARD_USERNAME_JUSTIN}
+      HERMES_DASHBOARD_BASIC_AUTH_PASSWORD: ${HERMES_DASHBOARD_PASSWORD_JUSTIN}
+      # Restrict terminal execution to the local container namespace only.
+      RTK_HERMES_BACKENDS: "local"
+      HERMES_TERMINAL_BACKEND: "local"
+      # U-06: mnemo-hermes — semantic memory via pgvector
+      MNEMO_POSTGRES_URL: "postgresql://mnemo:${MNEMO_POSTGRES_PASSWORD}@mnemo-postgres:5432/mnemo_justin"
+      INTERVALS_API_KEY_JUSTIN: ${INTERVALS_API_KEY_JUSTIN}
+      INTERVALS_ATHLETE_ID_JUSTIN: ${INTERVALS_ATHLETE_ID_JUSTIN}
+      # U-06: evey-bridge — inter-agent peer config (Justin ↔ Annique)
+      HERMES_PEER_NAME: "annique"
+      HERMES_PEER_URL: "http://172.31.255.5:8642"
+      HERMES_PEER_API_KEY: ${HERMES_API_KEY_ANNIQUE}
+    volumes:
+      # Rendered config.yaml, runtime .env, workbooks, and Google Workspace
+      # auth material are all deployed into the per-user /opt/data volume.
+      - /mnt/ssd/qacey/hermes/justin/data:/opt/data
+      - /mnt/ssd/qacey/hermes/justin/home:/opt/hermes/home/.hermes
+      # U-07: skill volumes (shared ro; per-user rw for SkillClaw)
+      - /mnt/ssd/qacey/hermes/skills/shared:/opt/hermes/home/.hermes/skills/shared:ro
+      - /mnt/ssd/qacey/hermes/skills/justin:/opt/hermes/home/.hermes/skills/justin:rw
+    networks:
+      qacey-proxy: {}
+      qacey-internal: {}
+      qacey-mcp-internal: {}
+      mnemo-data: {}
+      hermes-peer:
+        ipv4_address: 172.31.255.4
+    deploy:
+      resources:
+        limits:
+          memory: 4g
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'hermes' > /dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    # Direct dashboard (Hermex 2.0) — username/password required for the
+    # public bind; webui stays available in parallel during the transition.
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=qacey-proxy"
+      - "traefik.http.routers.hermes-justin.rule=Host(`hermes.${QACEY_DOMAIN}`)"
+      - "traefik.http.routers.hermes-justin.entrypoints=websecure"
+      - "traefik.http.routers.hermes-justin.tls.certresolver=${CERT_RESOLVER}"
+      - "traefik.http.routers.hermes-justin.middlewares=secure-headers@file"
+      - "traefik.http.routers.hermes-justin-cf.rule=Host(`hermes.${QACEY_DOMAIN}`)"
+      - "traefik.http.routers.hermes-justin-cf.entrypoints=cloudflared"
+      - "traefik.http.routers.hermes-justin-cf.middlewares=secure-headers@file"
+      - "traefik.http.services.hermes-justin.loadbalancer.server.port=9119"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── U-04: Hermes Agent — Annique ─────────────────────────────────────────────
+  hermes-annique:
+    build:
+      context: ${PLATFORM_DIR}/services/agent
+      dockerfile: Dockerfile
+      args:
+        HERMES_VERSION: ${HERMES_VERSION}
+    image: qacey/hermes-agent:local
+    container_name: hermes-annique
+    restart: unless-stopped
+    entrypoint: /opt/hermes/start.sh
+    user: "${HERMES_UID}:${HERMES_GID}"
+    depends_on:
+      - mnemo-postgres
+    environment:
+      GATEWAY_ALLOW_ALL_USERS: "false"
+      OPENCODE_GO_API_KEY: ${OPENCODE_GO_API_KEY}
+      OPENCODE_GO_BASE_URL: ${OPENCODE_GO_BASE_URL}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      OPENAI_API_KEY: ${OPENROUTER_API_KEY}
+      API_SERVER_ENABLED: "true"
+      API_SERVER_KEY: ${HERMES_API_KEY_ANNIQUE}
+      # API binds only to hermes-peer; no host port or shared-network listener.
+      API_SERVER_HOST: 172.31.255.5
+      API_SERVER_PORT: "8642"
+      HERMES_UID: ${HERMES_UID}
+      HERMES_GID: ${HERMES_GID}
+      # Direct dashboard (Hermex 2.0 / hermes-annique.${QACEY_DOMAIN}) — public
+      # bind requires an auth provider; the basic-auth plugin reads these two.
+      HERMES_DASHBOARD_HOST: 0.0.0.0
+      HERMES_DASHBOARD_BASIC_AUTH_USERNAME: ${HERMES_DASHBOARD_USERNAME_ANNIQUE}
+      HERMES_DASHBOARD_BASIC_AUTH_PASSWORD: ${HERMES_DASHBOARD_PASSWORD_ANNIQUE}
+      # U-06: rtk-hermes — enable rewrites for both local and docker backends
+      RTK_HERMES_BACKENDS: "local"
+      HERMES_TERMINAL_BACKEND: "local"
+      # U-06: mnemo-hermes — semantic memory via pgvector
+      MNEMO_POSTGRES_URL: "postgresql://mnemo:${MNEMO_POSTGRES_PASSWORD}@mnemo-postgres:5432/mnemo_annique"
+      # U-06: evey-bridge — inter-agent peer config (Annique ↔ Justin)
+      HERMES_PEER_NAME: "justin"
+      HERMES_PEER_URL: "http://172.31.255.4:8642"
+      HERMES_PEER_API_KEY: ${HERMES_API_KEY_JUSTIN}
+    volumes:
+      # Rendered config.yaml, runtime .env, workbooks, and Google Workspace
+      # auth material are all deployed into the per-user /opt/data volume.
+      - /mnt/ssd/qacey/hermes/annique/data:/opt/data
+      - /mnt/ssd/qacey/hermes/annique/home:/opt/hermes/home/.hermes
+      # U-07: skill volumes (shared ro; per-user rw for SkillClaw)
+      - /mnt/ssd/qacey/hermes/skills/shared:/opt/hermes/home/.hermes/skills/shared:ro
+      - /mnt/ssd/qacey/hermes/skills/annique:/opt/hermes/home/.hermes/skills/annique:rw
+    networks:
+      qacey-proxy: {}
+      qacey-internal: {}
+      qacey-mcp-internal: {}
+      mnemo-data: {}
+      hermes-peer:
+        ipv4_address: 172.31.255.5
+    deploy:
+      resources:
+        limits:
+          memory: 4g
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'hermes' > /dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    # Direct dashboard (Hermex 2.0) — username/password required for the
+    # public bind; webui stays available in parallel during the transition.
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=qacey-proxy"
+      - "traefik.http.routers.hermes-annique.rule=Host(`hermes-annique.${QACEY_DOMAIN}`)"
+      - "traefik.http.routers.hermes-annique.entrypoints=websecure"
+      - "traefik.http.routers.hermes-annique.tls.certresolver=${CERT_RESOLVER}"
+      - "traefik.http.routers.hermes-annique.middlewares=secure-headers@file"
+      - "traefik.http.routers.hermes-annique-cf.rule=Host(`hermes-annique.${QACEY_DOMAIN}`)"
+      - "traefik.http.routers.hermes-annique-cf.entrypoints=cloudflared"
+      - "traefik.http.routers.hermes-annique-cf.middlewares=secure-headers@file"
+      - "traefik.http.services.hermes-annique.loadbalancer.server.port=9119"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── U-16: Hermes WebUI — Annique (agent-annique.example.com) ───────────────
+  # Same as Justin, routed to hermes-annique (172.31.255.5:8642).
+  hermes-webui-annique:
+    image: ghcr.io/nesquena/hermes-webui:${HERMES_WEBUI_VERSION}
+    container_name: hermes-webui-annique
+    restart: unless-stopped
+    depends_on:
+      - hermes-annique
+    environment:
+      HERMES_WEBUI_HOST: 0.0.0.0
+      HERMES_WEBUI_PORT: "8787"
+      HERMES_HOME: /opt/data
+      HERMES_WEBUI_STATE_DIR: /home/hermeswebui/.hermes/webui
+      HERMES_WEBUI_AGENT_DIR: /home/hermeswebui/.hermes/hermes-agent
+      HERMES_SKIP_CHMOD: "1"
+      HERMES_WEBUI_DEFAULT_MODEL: hermes-agent
+      HERMES_WEBUI_PASSWORD: ${HERMES_WEBUI_PASSWORD_ANNIQUE}
+      HERMES_WEBUI_CHAT_BACKEND: gateway
+      HERMES_WEBUI_GATEWAY_BASE_URL: http://172.31.255.5:8642
+      HERMES_WEBUI_GATEWAY_API_KEY: ${HERMES_API_KEY_ANNIQUE}
+      HERMES_WEBUI_GATEWAY_USE_RUNS_API: "true"
+      HERMES_API_URL: http://172.31.255.5:8642
+      WANTED_UID: ${HERMES_UID}
+      WANTED_GID: ${HERMES_GID}
+      HERMES_WEBUI_SECURE: "1"
+      HERMES_WEBUI_TRUST_FORWARDED_HOST: "1"
+      HERMES_WEBUI_TRUST_FORWARDED_PROTO: "1"
+    volumes:
+      - hermes-webui-annique-home:/home/hermeswebui/.hermes
+      - hermes-agent-src:/home/hermeswebui/.hermes/hermes-agent:ro
+      - /mnt/ssd/qacey/hermes/annique/data:/opt/data:ro
+    networks:
+      qacey-proxy: {}
+      hermes-peer:
+        ipv4_address: 172.31.255.3
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import socket; socket.create_connection(('127.0.0.1', 8787), 3).close()\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=qacey-proxy"
+      - "traefik.http.routers.hermes-webui-annique.rule=Host(`agent-annique.${QACEY_DOMAIN}`)"
+      - "traefik.http.routers.hermes-webui-annique.entrypoints=websecure"
+      - "traefik.http.routers.hermes-webui-annique.tls.certresolver=${CERT_RESOLVER}"
+      - "traefik.http.routers.hermes-webui-annique.middlewares=secure-headers@file"
+      - "traefik.http.routers.hermes-webui-annique-cf.rule=Host(`agent-annique.${QACEY_DOMAIN}`)"
+      - "traefik.http.routers.hermes-webui-annique-cf.entrypoints=cloudflared"
+      - "traefik.http.routers.hermes-webui-annique-cf.middlewares=secure-headers@file"
+      - "traefik.http.services.hermes-webui-annique.loadbalancer.server.port=8787"
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── Temporary sandbox ──────────────────────────────────────────────────────
+  # Optional profile. Start with scripts/sandbox/start.sh after setting
+  # SANDBOX_OAUTH2_COOKIE_SECRET. Hermes edits the mounted workspace; this container
+  # executes only that workspace, with no host mount or Docker socket.
+  hermes-sandbox:
+    profiles: ["sandbox"]
+    build:
+      context: ${PLATFORM_DIR}/services/sandbox
+      dockerfile: Dockerfile
+    image: qacey/hermes-sandbox:local
+    container_name: hermes-sandbox
+    restart: unless-stopped
+    user: "${HERMES_UID}:${HERMES_GID}"
+    environment:
+      SANDBOX_WORKSPACE: /workspace
+      SANDBOX_APP_PATH: /opt/sandbox/Home.py
+      SANDBOX_PORT: "8501"
+      HOME: /tmp
+    volumes:
+      # Read-only here; Hermes writes the same host directory through /opt/data.
+      - ${SANDBOX_WORKSPACE_DIR:-/mnt/ssd/qacey/hermes/justin/data/sandbox}:/workspace:ro
+      # Agent-authored pages/helpers are mounted separately; the landing app is
+      # baked into the image and cannot be changed through the workspace.
+      - ${SANDBOX_WORKSPACE_DIR:-/mnt/ssd/qacey/hermes/justin/data/sandbox}/pages:/opt/sandbox/pages:ro
+      - ${SANDBOX_WORKSPACE_DIR:-/mnt/ssd/qacey/hermes/justin/data/sandbox}/lib:/opt/sandbox/lib:ro
+    networks:
+      - qacey-sandbox-edge
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 4g
+          pids: 512
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,size=4g
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8501/_stcore/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  hermes-sandbox-oauth2-proxy:
+    profiles: ["sandbox"]
+    image: quay.io/oauth2-proxy/oauth2-proxy:${OAUTH2_PROXY_VERSION}
+    container_name: hermes-sandbox-oauth2-proxy
+    restart: unless-stopped
+    depends_on:
+      - hermes-sandbox
+    environment:
+      OAUTH2_PROXY_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      OAUTH2_PROXY_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      OAUTH2_PROXY_COOKIE_SECRET: ${SANDBOX_OAUTH2_COOKIE_SECRET}
+    command:
+      - --provider=google
+      - --http-address=0.0.0.0:4180
+      - --upstream=http://hermes-sandbox:8501
+      - --redirect-url=https://sandbox.${QACEY_DOMAIN}/oauth2/callback
+      - --cookie-secure=true
+      - --cookie-samesite=lax
+      - --authenticated-emails-file=/etc/oauth2-proxy/allowed-emails.txt
+      - --scope=openid profile email
+      - --reverse-proxy=true
+      - --pass-user-headers=true
+      - --skip-provider-button=true
+      - --flush-interval=1ms
+    volumes:
+      - type: bind
+        source: ${PLATFORM_DIR}/secrets/browser-oauth-allowed-emails.txt
+        target: /etc/oauth2-proxy/allowed-emails.txt
+        read_only: true
+        bind:
+          create_host_path: false
+    networks:
+      - qacey-sandbox-edge
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,size=64m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=qacey-sandbox-edge"
+      - "traefik.http.routers.hermes-sandbox.rule=Host(`sandbox.${QACEY_DOMAIN}`)"
+      - "traefik.http.routers.hermes-sandbox.entrypoints=websecure"
+      - "traefik.http.routers.hermes-sandbox.tls.certresolver=${CERT_RESOLVER}"
+      - "traefik.http.routers.hermes-sandbox.middlewares=secure-headers@file"
+      - "traefik.http.routers.hermes-sandbox-cf.rule=Host(`sandbox.${QACEY_DOMAIN}`)"
+      - "traefik.http.routers.hermes-sandbox-cf.entrypoints=cloudflared"
+      - "traefik.http.routers.hermes-sandbox-cf.middlewares=secure-headers@file"
+      - "traefik.http.services.hermes-sandbox.loadbalancer.server.port=4180"
+    mem_limit: 256m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── U-07: SkillClaw — Evolve Server (skill auto-evolution) ────────────────
+  # Reads recorded sessions from the shared store, evolves + deduplicates skills
+  # and writes them back to shared/ + per-user dirs. Sessions are captured by
+  # import-hermes-sessions.py (reads both agents' native Hermes session logs —
+  # no proxy in the agents' request path). Runs once nightly via host cron, so
+  # it uses Google AI (fast/cheap) rather than slow local CPU inference.
+  skillclaw:
+    build:
+      context: ${PLATFORM_DIR}/services/skillclaw
+      dockerfile: Dockerfile
+    image: qacey/skillclaw:local
+    container_name: skillclaw
+    restart: unless-stopped
+    command:
+      - skillclaw-evolve-server
+      - --storage-backend
+      - local
+      - --local-root
+      - /skills/shared
+      - --group-id
+      - qacey
+      - --interval
+      - "86400"
+      - --port
+      - "8787"
+    environment:
+      # SkillClaw evolution now uses the same OpenCode Go endpoint/key as the
+      # Hermes main-text path. OpenCode Go serves an OpenAI-compatible relay at
+      # the URL below; fall back to OpenRouter only if the key is missing.
+      OPENAI_API_KEY: ${OPENCODE_GO_API_KEY}
+      OPENAI_BASE_URL: ${OPENCODE_GO_BASE_URL}
+      EVOLVE_MODEL: ${SKILLCLAW_MODEL}
+      EVOLVE_ENGINE: "workflow"
+    volumes:
+      # Read-only access to each agent's native Hermes session logs (input)
+      - /mnt/ssd/qacey/hermes/justin/data:/sessions/justin:ro
+      - /mnt/ssd/qacey/hermes/annique/data:/sessions/annique:ro
+      # Read-write skill access for evolution output
+      - /mnt/ssd/qacey/hermes/skills/shared:/skills/shared:rw
+      - /mnt/ssd/qacey/hermes/skills/justin:/skills/justin:rw
+      - /mnt/ssd/qacey/hermes/skills/annique:/skills/annique:rw
+    networks:
+      - qacey-proxy      # external egress (reach Google AI)
+      - qacey-internal
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import socket; socket.create_connection(('127.0.0.1', 8787), 2).close()\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── U-02: Immich stack ────────────────────────────────────────────────────
+
+  immich-server:
+    image: ghcr.io/immich-app/immich-server:${IMMICH_VERSION}
+    container_name: immich-server
+    restart: unless-stopped
+    extends:
+      file: hwaccel.transcoding.yml
+      service: quicksync
+    ports:
+      - "127.0.0.1:2283:2283"  # Expose for local bulk uploads (bypasses Traefik)
+    environment:
+      DB_HOSTNAME: immich-postgres
+      DB_USERNAME: immich
+      DB_PASSWORD: ${IMMICH_DB_PASSWORD}
+      DB_DATABASE_NAME: immich
+      REDIS_HOSTNAME: immich-redis
+      UPLOAD_LOCATION: /usr/src/app/upload
+    volumes:
+      - /mnt/hdd1/qacey/immich:/usr/src/app/upload
+    depends_on:
+      immich-postgres:
+        condition: service_healthy
+      immich-redis:
+        condition: service_healthy
+    networks:
+      - qacey-proxy
+      - qacey-internal
+      - immich-data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:2283/api/server/ping || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 3g
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=qacey-proxy"
+      - "traefik.http.routers.immich.rule=Host(`photos.${QACEY_DOMAIN}`)"
+      - "traefik.http.routers.immich.entrypoints=websecure"
+      - "traefik.http.routers.immich.tls.certresolver=${CERT_RESOLVER}"
+      - "traefik.http.routers.immich.middlewares=secure-headers@file"
+      - "traefik.http.routers.immich-cf.rule=Host(`photos.${QACEY_DOMAIN}`)"
+      - "traefik.http.routers.immich-cf.entrypoints=cloudflared"
+      - "traefik.http.routers.immich-cf.middlewares=secure-headers@file"
+      - "traefik.http.services.immich.loadbalancer.server.port=2283"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  immich-machine-learning:
+    image: ghcr.io/immich-app/immich-machine-learning:${IMMICH_VERSION}
+    container_name: immich-machine-learning
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - /mnt/ssd/qacey/immich-model-cache:/cache
+    networks:
+      - qacey-internal
+      - qacey-proxy
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:3003/ping')\" || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 4g
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  immich-redis:
+    image: redis:${REDIS_VERSION}
+    container_name: immich-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - immich-data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 64m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  immich-postgres:
+    # VectorChord migration completed; use the official lean image. The
+    # temporary legacy pgvecto.rs compatibility layer is no longer needed.
+    image: ghcr.io/immich-app/postgres:${IMMICH_POSTGRES_VERSION}
+    container_name: immich-postgres
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      POSTGRES_USER: immich
+      POSTGRES_PASSWORD: ${IMMICH_DB_PASSWORD}
+      POSTGRES_DB: immich
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    shm_size: 128mb
+    volumes:
+      - /mnt/ssd/qacey/postgres/immich:/var/lib/postgresql/data
+    networks:
+      - immich-data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U immich -d immich"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── U-02: Vaultwarden ─────────────────────────────────────────────────────
+
+  vaultwarden:
+    image: vaultwarden/server:${VAULTWARDEN_VERSION}
+    container_name: vaultwarden
+    restart: unless-stopped
+    environment:
+      DOMAIN: https://vault.${QACEY_DOMAIN}
+      ADMIN_TOKEN: ${VAULTWARDEN_ADMIN_TOKEN}
+      SIGNUPS_ALLOWED: "false"
+      # Google OAuth via Vaultwarden SSO (OIDC)
+      # SSO_ENABLED is only set to true when GOOGLE_CLIENT_ID is configured.
+      # Vaultwarden v1.36+ requires all three SSO vars when SSO_ENABLED=true.
+      SSO_ENABLED: ${VAULTWARDEN_SSO_ENABLED:-false}
+      SSO_ONLY: "false"
+      SSO_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      SSO_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      SSO_AUTHORITY: https://accounts.google.com
+      SSO_SCOPES: "openid profile email"
+    volumes:
+      - /mnt/ssd/qacey/vaultwarden:/data
+    networks:
+      - qacey-proxy
+      - qacey-internal
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:80/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=qacey-proxy"
+      - "traefik.http.routers.vaultwarden.rule=Host(`vault.${QACEY_DOMAIN}`)"
+      - "traefik.http.routers.vaultwarden.entrypoints=websecure"
+      - "traefik.http.routers.vaultwarden.tls.certresolver=${CERT_RESOLVER}"
+      - "traefik.http.routers.vaultwarden.middlewares=secure-headers@file"
+      - "traefik.http.routers.vaultwarden-cf.rule=Host(`vault.${QACEY_DOMAIN}`)"
+      - "traefik.http.routers.vaultwarden-cf.entrypoints=cloudflared"
+      - "traefik.http.routers.vaultwarden-cf.middlewares=secure-headers@file"
+      - "traefik.http.services.vaultwarden.loadbalancer.server.port=80"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  searxng:
+    image: searxng/searxng:${SEARXNG_VERSION}
+    container_name: searxng
+    restart: unless-stopped
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET_KEY}
+    volumes:
+      - ${PLATFORM_DIR}/infrastructure/searxng/settings.yml:/etc/searxng/settings.yml:ro
+    networks:
+      - qacey-proxy
+      - qacey-internal
+      - qacey-mcp-internal
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── SearXNG MCP — internal-only upstream Streamable HTTP adapter ──────────
+  # No host port, proxy network, Traefik route, or public DNS name by design.
+  mcp-searxng:
+    image: ${MCP_SEARXNG_IMAGE}
+    container_name: mcp-searxng
+    restart: unless-stopped
+    depends_on:
+      searxng:
+        condition: service_healthy
+    environment:
+      MCP_HTTP_PORT: "3000"
+      MCP_HTTP_HOST: 0.0.0.0
+      SEARXNG_URL: http://searxng:8080
+    networks:
+      - qacey-mcp-internal
+      - qacey-opencode-mcp
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:3000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      - "traefik.enable=false"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── U-03: MCP — Intervals.icu ────────────────────────────────────────────
+
+  mcp-intervals:
+    build:
+      context: ${PLATFORM_DIR}/services/mcp/intervals
+      dockerfile: Dockerfile
+    image: qacey/mcp-intervals:local
+    container_name: mcp-intervals
+    restart: unless-stopped
+    environment:
+      MCP_TRANSPORT: streamable-http
+      FASTMCP_HOST: 0.0.0.0
+      FASTMCP_PORT: "8000"
+      API_KEY: ${INTERVALS_API_KEY_JUSTIN}
+      ATHLETE_ID: ${INTERVALS_ATHLETE_ID_JUSTIN}
+    networks:
+      - qacey-proxy
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import socket; socket.create_connection(('127.0.0.1', 8000), 2).close()\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── U-03: MCP — Crawl4AI (Admin MCP — self-hosted, free web scraping) ───
+
+  crawl4ai:
+    image: unclecode/crawl4ai:${CRAWL4AI_VERSION}
+    container_name: crawl4ai
+    restart: unless-stopped
+    shm_size: '1gb'
+    environment:
+      - CRAWL4AI_API_TOKEN=${CRAWL4AI_API_TOKEN}
+    networks:
+      - qacey-proxy
+      - qacey-internal
+    deploy:
+      resources:
+        limits:
+          memory: 2048m
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import socket; socket.create_connection(('127.0.0.1', 11235), 3).close()\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  mcp-crawl4ai:
+    build:
+      context: ${PLATFORM_DIR}/services/mcp/crawl4ai
+      dockerfile: Dockerfile
+    image: qacey/mcp-crawl4ai:local
+    container_name: mcp-crawl4ai
+    restart: unless-stopped
+    depends_on:
+      - crawl4ai
+    environment:
+      CRAWL4AI_BASE_URL: http://crawl4ai:11235
+      CRAWL4AI_API_TOKEN: ${CRAWL4AI_API_TOKEN}
+      MCP_TRANSPORT: streamable-http
+      FASTMCP_HOST: 0.0.0.0
+      FASTMCP_PORT: "8000"
+      HOST: 0.0.0.0
+    networks:
+      - qacey-proxy
+      - qacey-internal
+      - qacey-opencode-mcp
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import socket; socket.create_connection(('127.0.0.1', 8000), 2).close()\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  mcp-academic-papers:
+    build:
+      context: ${PLATFORM_DIR}/services/mcp/academic-papers
+      dockerfile: Dockerfile
+    image: qacey/mcp-academic-papers:local
+    container_name: mcp-academic-papers
+    restart: unless-stopped
+    environment:
+      FASTMCP_HOST: 0.0.0.0
+      FASTMCP_PORT: "8000"
+      PAPER_SEARCH_MCP_UNPAYWALL_EMAIL: ${PAPER_SEARCH_MCP_UNPAYWALL_EMAIL:-}
+      PAPER_SEARCH_MCP_CORE_API_KEY: ${PAPER_SEARCH_MCP_CORE_API_KEY:-}
+      PAPER_SEARCH_MCP_SEMANTIC_SCHOLAR_API_KEY: ${PAPER_SEARCH_MCP_SEMANTIC_SCHOLAR_API_KEY:-}
+      PAPER_SEARCH_MCP_GOOGLE_SCHOLAR_PROXY_URL: ${PAPER_SEARCH_MCP_GOOGLE_SCHOLAR_PROXY_URL:-}
+      PAPER_SEARCH_MCP_DOAJ_API_KEY: ${PAPER_SEARCH_MCP_DOAJ_API_KEY:-}
+      PAPER_SEARCH_MCP_ZENODO_ACCESS_TOKEN: ${PAPER_SEARCH_MCP_ZENODO_ACCESS_TOKEN:-}
+    networks:
+      - qacey-proxy
+      - qacey-internal
+      - qacey-opencode-mcp
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import socket; socket.create_connection(('127.0.0.1', 8000), 2).close()\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── U-06: mnemo-postgres (pgvector for semantic memory) ───────────────────
+  mnemo-postgres:
+    image: pgvector/pgvector:${MNEMO_PGVECTOR_VERSION}
+    container_name: mnemo-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: mnemo
+      POSTGRES_PASSWORD: ${MNEMO_POSTGRES_PASSWORD}
+      POSTGRES_DB: postgres
+    volumes:
+      - /mnt/ssd/qacey/postgres/mnemo:/var/lib/postgresql/data
+    networks:
+      - mnemo-data
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mnemo -d mnemo_justin"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:${HOMEASSISTANT_VERSION}
+    container_name: homeassistant
+    restart: unless-stopped
+    privileged: true
+    network_mode: host
+    environment:
+      - TZ=${TZ:-Australia/Sydney}
+    volumes:
+      - /mnt/ssd/qacey/homeassistant/config:/config
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8123/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── U-14: Scrutiny drive health monitoring ───────────────────────────────────
+  scrutiny:
+    image: ghcr.io/analogj/scrutiny:${SCRUTINY_VERSION}
+    container_name: scrutiny
+    restart: unless-stopped
+    privileged: true
+    cap_add:
+      - SYS_RAWIO
+    devices:
+      - /dev/sda
+      - /dev/sdb
+      - /dev/sdc
+      - /dev/sdd
+      - /dev/nvme0n1
+    volumes:
+      - /run/udev:/run/udev:ro
+      - /mnt/ssd/qacey/scrutiny:/opt/scrutiny/config
+      - scrutiny-influxdb:/opt/scrutiny/influxdb
+    networks:
+      - qacey-proxy
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/api/health || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=qacey-proxy"
+      - "traefik.http.routers.scrutiny.rule=Host(`drive-health.${QACEY_DOMAIN}`)"
+      - "traefik.http.routers.scrutiny.entrypoints=websecure"
+      - "traefik.http.routers.scrutiny.tls.certresolver=${CERT_RESOLVER}"
+      - "traefik.http.routers.scrutiny.middlewares=secure-headers@file"
+      - "traefik.http.routers.scrutiny-cf.rule=Host(`drive-health.${QACEY_DOMAIN}`)"
+      - "traefik.http.routers.scrutiny-cf.entrypoints=cloudflared"
+      - "traefik.http.routers.scrutiny-cf.middlewares=secure-headers@file"
+      - "traefik.http.services.scrutiny.loadbalancer.server.port=8080"
+
+networks:
+  qacey-proxy:
+    name: qacey-proxy
+    external: true
+  qacey-internal:
+    name: qacey-internal
+    external: true
+  qacey-mcp-internal:
+    name: qacey-mcp-internal
+    internal: true
+  # Dedicated, host-isolated network for the two authenticated peer APIs.
+  # API_SERVER_HOST binds to each fixed address, so API/health routes are not
+  # reachable from qacey-proxy or qacey-internal peers.
+  hermes-peer:
+    name: qacey-hermes-peer
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.31.255.0/29
+  qacey-sandbox-edge:
+    name: qacey-sandbox-edge
+  qacey-opencode:
+    name: qacey-opencode
+    external: true
+  qacey-opencode-mcp:
+    name: qacey-opencode-mcp
+    internal: true
+  qacey-opencode-control:
+    name: qacey-opencode-control
+    internal: true
+  qacey-opencode-embeddings:
+    name: qacey-opencode-embeddings
+    internal: true
+  immich-data:
+    name: qacey-immich-data
+    internal: true
+  paperless-data:
+    name: qacey-paperless-data
+    internal: true
+  mnemo-data:
+    name: qacey-mnemo-data
+    internal: true
+  opencode-egress:
+
+volumes:
+  ollama-models:
+    name: qacey-platform_ollama-data
+    external: true
+  scrutiny-influxdb:
+  # U-16: shared read-only Hermes agent source for the webui containers.
+  # Populated once from qacey/hermes-agent:local /opt/hermes.
+  hermes-agent-src:
+  hermes-webui-annique-home:
+  # U-16: Immich Power Tools data volume

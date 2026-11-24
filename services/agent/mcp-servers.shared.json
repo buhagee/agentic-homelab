@@ -1,0 +1,69 @@
+{
+  "crawl4ai": {
+    "url": "http://mcp-crawl4ai:8000/mcp",
+    "transport": "streamable_http"
+  },
+  "browser_use": {
+    "command": "uvx",
+    "args": ["--from", "browser-use[cli]==0.13.7", "browser-use", "--mcp"],
+    "env": {
+      "OPENAI_API_KEY": "${OPENCODE_GO_API_KEY}",
+      "OPENAI_BASE_URL": "${OPENCODE_GO_BASE_URL}",
+      "BROWSER_USE_LLM_MODEL": "${SKILLCLAW_MODEL}",
+      "BROWSER_USE_HEADLESS": "true",
+      "BROWSER_USE_DISABLE_EXTENSIONS": "1",
+      "BROWSER_USE_VERSION_CHECK": "false",
+      "ANONYMIZED_TELEMETRY": "false"
+    }
+  },
+  "academic_papers": {
+    "url": "http://mcp-academic-papers:8000/mcp",
+    "transport": "streamable_http"
+  },
+  "mcp_searxng": {
+    "url": "http://mcp-searxng:3000/mcp",
+    "transport": "streamable_http"
+  },
+  "fetch_mcp": {
+    "command": "uvx",
+    "args": ["--with", "mcp==1.29.0", "--from", "mcp-fetch==0.6.5", "mcp-fetch"]
+  },
+  "wikipedia": {
+    "command": "uvx",
+    "args": ["wikipedia-mcp"]
+  },
+  "mcp_weather": {
+    "command": "uvx",
+    "args": ["--with", "mcp==1.29.0", "--from", "mcp-weather-server==0.6.1", "mcp_weather_server"]
+  },
+  "mcp_time": {
+    "command": "uvx",
+    "args": ["--with", "mcp==1.29.0", "--from", "mcp-server-time==2026.7.10", "mcp-server-time"]
+  },
+  "geolabel_mcp": {
+    "command": "uvx",
+    "args": ["--with", "mcp==1.29.0", "--from", "geolabel-mcp==0.1.1", "geolabel-mcp"]
+  },
+  "paperless": {
+    "url": "http://mcp-paperless:8000/mcp",
+    "transport": "streamable_http"
+  },
+  "mcp_homeassistant": {
+    "command": "uvx",
+    "args": ["--from", "hass-mcp", "hass-mcp"],
+    "env": {
+      "HA_URL": "http://host-gateway:8123",
+      "HA_TOKEN": "${HA_LONG_LIVED_TOKEN}"
+    }
+  },
+  "google_workspace": {
+    "command": "/opt/google-workspace-venv/bin/python",
+    "args": ["-m", "google_workspace_mcp"],
+    "env": {
+      "HOME": "/opt/hermes/home",
+      "PYTHONPATH": "/opt/hermes",
+      "GOOGLE_WORKSPACE_AUTH_FILE": "/opt/data/google-workspace/auth.json",
+      "GOOGLE_WORKSPACE_TIMEOUT_SECONDS": "60"
+    }
+  }
+}

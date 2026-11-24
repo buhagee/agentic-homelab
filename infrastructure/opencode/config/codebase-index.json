@@ -1,0 +1,13 @@
+{
+  "embeddingProvider": "ollama",
+  "embeddingModel": "nomic-embed-text",
+  "scope": "global",
+  "knowledgeBases": [
+    "/workspace/*"
+  ],
+  "indexing": {
+    "autoIndex": false,
+    "watchFiles": true,
+    "requireProjectMarker": true
+  }
+}

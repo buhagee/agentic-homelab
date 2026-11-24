@@ -1,0 +1,155 @@
+# Oracle Traefik — Dynamic Configuration
+# Hot-reloads on file changes (no container restart needed).
+#
+# All *.${QACEY_DOMAIN} traffic is forwarded to the home server via WireGuard.
+# The home server's Traefik then handles routing to individual service containers.
+#
+# Home server WireGuard tunnel IP: 10.100.0.2
+# Home server Traefik listens on: :443 (websecure)
+#
+# TLS: DNS-01 wildcard cert for *.${QACEY_DOMAIN} via Cloudflare API.
+# One cert covers all subdomains — no per-subdomain issuance needed.
+#
+# DNS setup in Cloudflare (DNS-only, orange cloud OFF):
+#   A   *.${QACEY_DOMAIN}      → 203.0.113.10  (wildcard, grey cloud)
+#   A   platform-status.${QACEY_DOMAIN} → 203.0.113.10  (already set, no change)
+
+http:
+  middlewares:
+    secure-headers:
+      headers:
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        stsPreload: true
+        contentTypeNosniff: true
+        browserXssFilter: true
+        referrerPolicy: "strict-origin-when-cross-origin"
+        customResponseHeaders:
+          X-Robots-Tag: "noindex, nofollow"
+
+    # ── Rate limiting ─────────────────────────────────────────────────────────
+    # Limits each source IP to 500 requests per 10 seconds, burst of 200.
+    # Raised from 100/50 (U-11 default) — the Immich People page fires 100+
+    # simultaneous thumbnail requests which was triggering 429s.
+    # Still protects against external DoS; personal household use only.
+    global-ratelimit:
+      rateLimit:
+        average: 500
+        burst: 200
+        period: 10s
+        sourceCriterion:
+          ipStrategy:
+            depth: 1
+
+    # ── U-12: CrowdSec bouncer + AppSec WAF ──────────────────────────────────
+    # maxlerebourg/crowdsec-bouncer-traefik-plugin — runs inside oracle-traefik process.
+    # crowdsecLapiHost: crowdsec-oracle's static oracle_net IP (172.19.0.10).
+    # crowdsecAppsecEnabled: false — AppSec disabled on Oracle pending fix.
+    #   Root cause: crowdsec-oracle acquis.yaml Docker source reads oracle-traefik's
+    #   own stdout (which includes plugin log lines) instead of the access log JSON.
+    #   CrowdSec fails to parse it → AppSec never starts → plugin fails closed.
+    #   Fix: switch Oracle acquisition to file-based access log (requires volume mount).
+    #   Tracked as post-U-12 improvement. IP bouncer (LAPI stream) is active.
+    crowdsec-bouncer:
+      plugin:
+        bouncer:
+          enabled: true
+          crowdsecLapiKey: "${CROWDSEC_ORACLE_LAPI_KEY}"
+          crowdsecLapiHost: "${CROWDSEC_ORACLE_NET_IP}:8080"
+          crowdsecMode: "stream"
+          crowdsecAppsecEnabled: false
+          crowdsecAppsecFailureBlock: false
+          crowdsecAppsecUnreachableBlock: false
+          forwardedHeadersTrustedIPs:
+            - "173.245.48.0/20"
+            - "103.21.244.0/22"
+            - "103.22.200.0/22"
+            - "103.31.4.0/22"
+            - "141.101.64.0/18"
+            - "108.162.192.0/18"
+            - "190.93.240.0/20"
+            - "188.114.96.0/20"
+            - "197.234.240.0/22"
+            - "198.41.128.0/17"
+            - "162.158.0.0/15"
+            - "104.16.0.0/13"
+            - "104.24.0.0/14"
+            - "172.64.0.0/13"
+            - "131.0.72.0/22"
+  routers:
+
+    # ── Wildcard cert trigger — forces DNS-01 issuance of *.${QACEY_DOMAIN} ────
+    # Traefik only issues certs proactively when it can extract a domain from
+    # a Host() rule. This router exists solely to trigger the wildcard cert.
+    # It matches the apex domain; the wildcard SAN covers all subdomains.
+    # Priority 50 — lowest, never matches real traffic (all subdomains hit
+    # home-server or uptime-kuma first).
+    wildcard-cert:
+      rule: "Host(`${QACEY_DOMAIN}`)"
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+        domains:
+          - main: "${QACEY_DOMAIN}"
+            sans:
+              - "*.${QACEY_DOMAIN}"
+      service: uptime-kuma-svc
+      priority: 50
+
+    # ── Uptime Kuma — local to Oracle VPS ───────────────────────────────────
+    uptime-kuma:
+      rule: "Host(`platform-status.${QACEY_DOMAIN}`)"
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+        domains:
+          - main: "platform-status.${QACEY_DOMAIN}"
+      middlewares:
+        - secure-headers
+      service: uptime-kuma-svc
+      priority: 200
+
+    # ── Home server — all other *.${QACEY_DOMAIN} subdomains ───────────────────
+    # Wildcard catch-all: forwards to home server Traefik via WireGuard tunnel.
+    # Home Traefik handles per-service routing based on Host header.
+    # Priority 100 (lower than uptime-kuma at 200) so status.${QACEY_DOMAIN}
+    # is handled locally before falling through to the wildcard.
+    #
+    # The domains block triggers issuance of a single wildcard cert on startup.
+    # All *.${QACEY_DOMAIN} subdomains are covered by this one cert.
+    home-server:
+      rule: "HostRegexp(`^.+\\.qacey\\.com\\.au$`)"
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+      middlewares:
+        - secure-headers
+      service: home-server-svc
+      priority: 100
+
+  services:
+
+    uptime-kuma-svc:
+      loadBalancer:
+        servers:
+          - url: "http://uptime-kuma:3001"
+        passHostHeader: true
+
+    # Forward to home server via WireGuard tunnel.
+    # Oracle Traefik sends to 10.100.0.2:443 (home wireguard-home tunnel IP).
+    # Home Traefik handles per-service routing based on Host header.
+    home-server-svc:
+      loadBalancer:
+        servers:
+          - url: "https://10.100.0.2:443"
+        passHostHeader: true
+        serversTransport: home-server-transport
+
+  serversTransports:
+    # Skip TLS verification when forwarding to home server.
+    # Safe: WireGuard tunnel provides transport security.
+    home-server-transport:
+      insecureSkipVerify: true

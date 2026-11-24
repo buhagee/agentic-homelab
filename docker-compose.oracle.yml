@@ -1,0 +1,180 @@
+# docker-compose.oracle.yml
+# Qacey Oracle VPS stack — reverse proxy + monitoring + security
+#
+# Architecture:
+#   Client → wireguard-oracle (ports 80/443/51820)
+#          → oracle-traefik (shares wireguard network namespace)
+#          → WireGuard tunnel (10.100.0.0/24)
+#          → home server Traefik → service containers
+#
+# Security stack:
+#   crowdsec-oracle — behavioural IDS + AppSec WAF (Traefik logs + SSH)
+#   oracle-traefik uses maxlerebourg/crowdsec-bouncer-traefik-plugin (in-process)
+#   No separate bouncer container needed — plugin runs inside oracle-traefik.
+#
+# Networking note:
+#   oracle-traefik shares wireguard-oracle's network namespace so Traefik can
+#   route to 10.100.0.2 via wg0. The Traefik plugin reaches crowdsec-oracle
+#   LAPI at ${CROWDSEC_ORACLE_NET_IP}:8080 and AppSec at ${CROWDSEC_ORACLE_NET_IP}:7422.
+#   oracle-deploy.sh writes CROWDSEC_ORACLE_NET_IP to .env.oracle after first deploy.
+#
+# Deploy ON the Oracle VPS only — never run this on the home server.
+#
+# Pre-requisites:
+#   1. sudo bash scripts/server-setup-oracle.sh  (OS hardening + Docker)
+#   2. Copy .env.oracle.example → .env.oracle and fill in all values
+#   3. sudo bash scripts/oracle-deploy.sh        (generates WireGuard keys + deploys)
+#
+# Management (from ~/qacey-platform on Oracle VPS):
+#   Start:   docker compose -f docker-compose.oracle.yml --env-file versions.env --env-file .env.oracle up -d
+#   Stop:    docker compose -f docker-compose.oracle.yml --env-file versions.env --env-file .env.oracle down
+#   Logs:    docker compose -f docker-compose.oracle.yml --env-file versions.env --env-file .env.oracle logs -f
+#   WG status: docker exec wireguard-oracle wg show
+
+name: qacey
+
+services:
+
+  # ── WireGuard (tunnel server — home server connects to this) ─────────────────
+  # Listens on UDP 51820. Ports 80/443 also bound here since oracle-traefik
+  # shares this container's network namespace.
+  wireguard-oracle:
+    image: lscr.io/linuxserver/wireguard:${WIREGUARD_VERSION}
+    container_name: wireguard-oracle
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Australia/Sydney
+    volumes:
+      - /opt/qacey/wireguard/oracle:/config
+      - /lib/modules:/lib/modules:ro
+    ports:
+      - "51820:51820/udp"
+      - "80:80"
+      - "443:443"
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+      - net.ipv4.ip_forward=1
+    networks:
+      - oracle_net
+    mem_limit: 64m
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── Oracle Traefik (TLS termination — routes to home via WireGuard) ──────────
+  # Shares wireguard-oracle's network namespace to access wg0 (10.100.0.2).
+  # Dynamic config is rendered by oracle-deploy.sh into /opt/qacey/traefik/oracle/dynamic/
+  # (passthrough.yml has secrets substituted at deploy time — not mounted from repo).
+  oracle-traefik:
+    image: traefik:${TRAEFIK_VERSION}
+    container_name: oracle-traefik
+    restart: unless-stopped
+    mem_limit: 128m
+    network_mode: "service:wireguard-oracle"
+    depends_on:
+      - wireguard-oracle
+    environment:
+      - TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL=${ACME_EMAIL}
+      - CF_DNS_API_TOKEN=${CF_DNS_API_TOKEN}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./infrastructure/traefik/oracle/traefik.yml:/traefik.yml:ro
+      - /opt/qacey/traefik/oracle/acme.json:/acme.json
+      # Rendered dynamic config (secrets substituted by oracle-deploy.sh)
+      - /opt/qacey/traefik/oracle/dynamic:/dynamic:ro
+      # Access log shared with crowdsec-oracle for log acquisition
+      - /opt/qacey/traefik/oracle/logs:/var/log/traefik
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── Uptime Kuma (external uptime monitoring) ─────────────────────────────────
+  uptime-kuma:
+    image: louislam/uptime-kuma:${UPTIME_KUMA_VERSION}
+    container_name: uptime-kuma
+    restart: unless-stopped
+    mem_limit: 256m
+    ports:
+      - "127.0.0.1:3001:3001"
+    volumes:
+      - uptime-kuma-data:/app/data
+    networks:
+      - oracle_net
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── CrowdSec (behavioural IDS + AppSec WAF — Traefik + SSH protection) ─────
+  # Reads oracle-traefik logs via Docker acquisition + SSH via journald.
+  # LAPI on oracle_net at crowdsec-oracle:8080.
+  # AppSec listener on oracle_net at crowdsec-oracle:7422.
+  # oracle-traefik plugin reaches both via ${CROWDSEC_ORACLE_NET_IP} (static 172.19.0.10).
+  crowdsec-oracle:
+    image: crowdsecurity/crowdsec:${CROWDSEC_VERSION}
+    container_name: crowdsec-oracle
+    restart: unless-stopped
+    mem_limit: 384m
+    environment:
+      # U-12: added appsec-virtual-patching + appsec-generic-rules for AppSec WAF
+      - COLLECTIONS=crowdsecurity/traefik crowdsecurity/http-dos crowdsecurity/sshd crowdsecurity/appsec-virtual-patching crowdsecurity/appsec-generic-rules
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - SMTP_ENCRYPTION=${SMTP_ENCRYPTION}
+      - ALERT_EMAIL_FROM=${ALERT_EMAIL_FROM}
+      - ALERT_EMAIL_TO=${ALERT_EMAIL_TO}
+    volumes:
+      - /opt/qacey/crowdsec-oracle/config:/etc/crowdsec
+      - /opt/qacey/crowdsec-oracle/data:/var/lib/crowdsec/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /run/log/journal:/run/log/journal:ro
+      - /etc/machine-id:/etc/machine-id:ro
+      - ./infrastructure/crowdsec/oracle/acquis.yaml:/etc/crowdsec/acquis.yaml:ro
+      - ./infrastructure/crowdsec/notifications/email.yaml:/etc/crowdsec/notifications/email.yaml:ro
+      - ./infrastructure/crowdsec/profiles.yaml:/etc/crowdsec/profiles.yaml:ro
+      # Access log shared with oracle-traefik for file-based acquisition
+      - /opt/qacey/traefik/oracle/logs:/var/log/traefik:ro
+    networks:
+      oracle_net:
+        # Static IP so oracle-traefik plugin always finds the LAPI + AppSec.
+        # CROWDSEC_ORACLE_NET_IP in .env.oracle must match this value.
+        ipv4_address: 172.19.0.10
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # cs-oracle-bouncer removed in U-12 — replaced by maxlerebourg/crowdsec-bouncer-traefik-plugin
+  # which runs inside the oracle-traefik process (no separate container needed).
+  # Plugin config is in infrastructure/traefik/oracle/dynamic/passthrough.yml.
+
+volumes:
+  uptime-kuma-data:
+
+networks:
+  oracle_net:
+    driver: bridge
+    ipam:
+      config:
+        # Fixed subnet so crowdsec-oracle always gets 172.19.0.10.
+        # cs-oracle-bouncer (in wireguard's netns) uses this IP as CROWDSEC_AGENT_HOST.
+        - subnet: 172.19.0.0/16
