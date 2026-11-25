@@ -139,6 +139,7 @@ class LauncherTests(unittest.TestCase):
         self.assertFalse(self.log.exists())
 
     def test_runtime_dry_run_and_launcher_forwarding_do_not_download_or_execute(self):
+        self.codex.unlink()
         with patch.object(self.runtime, "urlopen", side_effect=AssertionError("network used")):
             self.assertEqual(self.runtime.main([]), 0)
         with patch.object(self.launch.install_runtime, "main", return_value=42) as install:
@@ -147,10 +148,24 @@ class LauncherTests(unittest.TestCase):
                 self.assertEqual(install.call_args.args, (args,))
         self.assertFalse(self.log.exists())
 
+    def test_runtime_preserves_unrelated_commands_before_network(self):
+        for kind in ('script', 'symlink', 'dangling'):
+            if kind != 'script':
+                self.codex.unlink()
+                self.codex.symlink_to(self.home / ('calls.json' if kind == 'dangling' else '.codex'))
+            before = self.codex.lstat()
+            for args in ([], ['--apply']):
+                with self.subTest(kind=kind, args=args), patch.object(self.runtime, "urlopen") as fetch:
+                    with self.assertRaisesRegex(ValueError, "unrelated Codex command"):
+                        self.runtime.main(args)
+                    fetch.assert_not_called()
+                    self.assertTrue(os.path.samestat(before, self.codex.lstat()))
+
     def test_runtime_rejects_unreviewed_installer_without_execution(self):
+        self.codex.unlink()
         release = json.loads((ASSETS / "release.json").read_text())
         self.assertEqual(release, {
-            "version": "0.172.0", "url": "https://chatgpt.com/codex/install.sh",
+            "version": "0.172.0", "url": "https://github.com/openai/codex/releases/download/rust-v0.172.0/install.sh",
             "sha256": "b698d8eb50c0fbe0214ea57b5bf2af439054108404c6d2b872989db02f4bd574"
         })
         with patch.object(self.runtime, "urlopen", return_value=io.BytesIO(b"exit 0\n")), \
@@ -168,8 +183,13 @@ test "$CODEX_INSTALL_DIR" = "$HOME/.local/bin"
 test "${PATH%%:*}" = "$CODEX_INSTALL_DIR"
 test -z "${CODEX_INSTALL_DAEMON_ONLY:-}"
 test "$(stat -c %a "$(dirname "$0")")" = 700
-printf '%s\\n' '#!/bin/sh' 'echo codex-cli VERSION' > "$CODEX_INSTALL_DIR/codex"
-chmod 700 "$CODEX_INSTALL_DIR/codex"
+current="$CODEX_HOME/packages/standalone/current"
+release="$CODEX_HOME/packages/standalone/releases/0.172.0-x86_64-unknown-linux-musl"
+mkdir -p "$release/bin"
+printf '%s\\n' '#!/bin/sh' 'echo codex-cli VERSION' > "$release/bin/codex"
+chmod 700 "$release/bin/codex"
+ln -sfnT "$release" "$current"
+ln -sfnT "$current/bin/codex" "$CODEX_INSTALL_DIR/codex"
 """.replace("VERSION", result_version)).encode()
         release = self.home / "release.json"
         release.write_text(json.dumps(dict(version="0.172.0", url="https://example.invalid",
@@ -180,9 +200,13 @@ chmod 700 "$CODEX_INSTALL_DIR/codex"
             return self.runtime.main(["--apply"])
 
     def test_runtime_installs_full_pinned_release_with_controlled_environment(self):
+        self.codex.unlink()
+        self.assertEqual(self.run_fixture_installer("0.172.0"), 0)
+        self.assertEqual(self.codex.readlink(), self.state / "packages/standalone/current/bin/codex")
         self.assertEqual(self.run_fixture_installer("0.172.0"), 0)
 
     def test_runtime_rejects_an_installed_prerelease_or_other_version(self):
+        self.codex.unlink()
         with self.assertRaisesRegex((RuntimeError, ValueError), "(?i)version"):
             self.run_fixture_installer("0.172.0-alpha.1")
 

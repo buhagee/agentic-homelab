@@ -208,6 +208,17 @@ class ProvisionTests(unittest.TestCase):
         self.assertEqual(self.commands, [])
         self.assertFalse(self.record.exists())
 
+    def test_platform_storage_overlap_is_rejected_even_for_missing_homes(self):
+        for disk in ("ssd", "hdd1", "hdd2"):
+            mount = self.host / "mnt" / disk
+            for location in (mount, mount / "qacey", mount / "qacey/deep/dev-agent"):
+                with self.subTest(location=location), self.assertRaisesRegex(ValueError, "platform"):
+                    self.setup.main(["--home", str(location), "--apply"])
+            alternative = mount / "dev-agent"
+            self.assertEqual(self.setup.checked_home("dev-agent", str(alternative)), alternative)
+        self.assertFalse(self.record.exists())
+        self.assertFalse(self.commands)
+
     def test_unsearchable_home_ancestor_rejected_before_account_or_record_creation(self):
         (self.host / "mnt").chmod(0o700)
         before = sorted(self.host.rglob("*"))

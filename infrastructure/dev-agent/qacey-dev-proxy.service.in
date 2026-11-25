@@ -1,6 +1,9 @@
 [Unit]
 Description=Unix to loopback bridge for native OpenChamber
-After=qacey-openchamber.service
+# A connection may start the forwarder only while both units are already active.
+Requisite=qacey-openchamber.service qacey-dev-proxy.socket
+After=qacey-openchamber.service qacey-dev-proxy.socket
+PartOf=qacey-dev-proxy.socket
 
 [Service]
 Type=simple

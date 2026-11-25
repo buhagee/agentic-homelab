@@ -113,11 +113,11 @@ def transport(caddy, directory, config, environment):
     backend = directory / 'backend.sock'
     server = UnixHTTP(str(backend), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    with socket.socket() as reserve:
-        reserve.bind(('127.0.0.1', 0)); port = reserve.getsockname()[1]
-    actual = transport_config(caddy, directory, config, port, backend, environment)
     process = None
     try:
+        with socket.socket() as reserve:
+            reserve.bind(('127.0.0.1', 0)); port = reserve.getsockname()[1]
+        actual = transport_config(caddy, directory, config, port, backend, environment)
         with (directory / 'caddy.log').open('w') as log:
             process = subprocess.Popen([str(caddy), 'run', '--config', str(actual), '--adapter', 'caddyfile'],
                                        stdout=log, stderr=log, env=environment)

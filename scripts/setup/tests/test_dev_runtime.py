@@ -169,10 +169,15 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual((self.home / '.local/bin/opencode').read_text(), 'manual replacement')
         self.assertFalse((self.home / '.local/share/qacey-dev/runtime/installation.json').exists())
 
-    def test_reviewed_opencode_version_matches_registry_and_lock_hashes(self):
+    def test_reviewed_native_release_assets_and_lock_hashes(self):
         release = json.loads((ASSETS / 'release.json').read_text())
-        values = dict(line.split('=',1) for line in (ROOT / 'versions.env').read_text().splitlines() if line and not line.startswith('#') and '=' in line)
-        self.assertEqual(release['opencode']['version'], values['OPENCODE_V2_VERSION'])
+        opencode = release['opencode']
+        self.assertRegex(opencode['version'], r'^\d+\.\d+\.\d+$')
+        self.assertEqual(set(opencode['assets']), {'x64', 'arm64'})
+        for arch, asset in opencode['assets'].items():
+            self.assertEqual(asset['url'], 'https://github.com/anomalyco/opencode/releases/download/'
+                             f"v{opencode['version']}/opencode-linux-{arch}.tar.gz")
+            self.assertRegex(asset['sha256'], r'^[0-9a-f]{64}$')
         for name,key in (('package.json','manifest_sha256'),('package-lock.json','lock_sha256')):
             self.assertEqual(hashlib.sha256((ASSETS / 'runtime/openchamber' / name).read_bytes()).hexdigest(), release['openchamber'][key])
 

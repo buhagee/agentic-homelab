@@ -2,8 +2,6 @@
 """Install opt-in native development helpers and disabled units. Defaults to dry-run."""
 
 import argparse
-from contextlib import contextmanager
-import fcntl
 import importlib.util
 import json
 import os
@@ -46,13 +44,7 @@ def trusted_parents(path):
 
 
 class Provision:
-    def __init__(self, port=3939, node='/usr/bin/node'):
-        if type(port) is not int or not 1024 <= port <= 65535:
-            raise ValueError('Choose a nonprivileged web port from 1024 to 65535.')
-        path = Path(node)
-        if (not path.is_absolute() or not path.name or str(path) != node or '..' in path.parts
-                or any(not char.isprintable() for char in node)):
-            raise ValueError('Use a canonical absolute Node executable path.')
+    def __init__(self, port=None, node=None):
         self.port, self.node = port, node
         self.lib = HOST_ROOT / 'usr/local/lib/qacey-dev'
         self.directory = HOST_ROOT / 'etc/qacey-dev'
@@ -82,6 +74,17 @@ class Provision:
         if previous is not None and (not isinstance(previous, dict) or previous.get('schema') != 1
                                      or any(previous.get(key) != basis[key] for key in ('user', 'home', 'uid', 'gid'))):
             raise ValueError('Development installation belongs to a different account.')
+        settings = previous or {}
+        port = self.port if self.port is not None else settings.get('port', 3939)
+        node = self.node if self.node is not None else settings.get('node', '/usr/bin/node')
+        if type(port) is not int or not 1024 <= port <= 65535:
+            raise ValueError('Choose a nonprivileged web port from 1024 to 65535.')
+        if not isinstance(node, str):
+            raise ValueError('Use a canonical absolute Node executable path.')
+        path = Path(node)
+        if (not path.is_absolute() or not path.name or str(path) != node or '..' in path.parts
+                or any(not char.isprintable() for char in node)):
+            raise ValueError('Use a canonical absolute Node executable path.')
         for path in (self.directory, self.lib):
             if foundation.trusted(path, directory=True, optional=True) and previous is None:
                 raise ValueError(f'Refusing unrelated installation directory: {path}')
@@ -114,28 +117,27 @@ class Provision:
             raise ValueError('OpenChamber policy directory is not readable by the development account.')
         release = json.loads((ASSETS / 'release.json').read_text())
         expected = str(home / '.local/share/qacey-dev/runtime' / ('opencode-' + release['opencode']['version']) / 'opencode')
-        allowed = {None, expected}
+        current_binary = policy.get('opencodeBinary')
+        before = current_binary
+        allowed = [None, expected]
         if previous:
-            allowed.add(str(home / '.local/share/qacey-dev/runtime' / ('opencode-' + previous['opencode_version']) / 'opencode'))
-        if policy.get('opencodeBinary') not in allowed:
+            managed = str(home / '.local/share/qacey-dev/runtime' / ('opencode-' + previous['opencode_version']) / 'opencode')
+            allowed.append(managed)
+            if previous.get('ready') is False and 'policy_before' in previous:
+                if expected != managed:
+                    raise ValueError('Finish the interrupted OpenCode upgrade before selecting a different release.')
+                before = previous['policy_before']
+                allowed = [before, managed]
+        if current_binary not in allowed:
             raise ValueError('OpenChamber already selects a different OpenCode binary.')
         policy['opencodeBinary'] = expected
         record = dict(schema=1, ready=False, user=basis['user'], uid=basis['uid'], gid=basis['gid'],
-                      home=basis['home'], port=self.port, node=self.node,
+                      home=basis['home'], port=port, node=node, policy_before=before,
                       opencode_version=release['opencode']['version'], openchamber_version=release['openchamber']['version'])
         return record, policy
 
-    @contextmanager
-    def lock(self):
-        descriptor = os.open(HOST_ROOT / 'etc', os.O_DIRECTORY | os.O_NOFOLLOW)
-        try:
-            fcntl.flock(descriptor, fcntl.LOCK_EX)
-            yield
-        finally:
-            os.close(descriptor)
-
     def apply(self):
-        with self.lock():
+        with foundation.provision_lock():
             record, policy = self.preflight()
             record['source_version'] = source_version()
             self.directory.mkdir(mode=0o755, exist_ok=True)
@@ -154,26 +156,33 @@ class Provision:
                 unit = (ASSETS / (name + '.in')).read_text().replace('@USER@', record['user'])
                 unit = unit.replace('@HOME@', quoted(record['home'])).replace('@PORT@', str(record['port']))
                 foundation.write_atomic(self.unit_dir / name, unit.encode(), 0o644)
-            self.policy.parent.mkdir(mode=0o755, exist_ok=True)
+            if not self.policy.parent.exists():
+                # Publish the directory with its traversal mode in the mkdir syscall.
+                previous_umask = os.umask(0o022)
+                try:
+                    self.policy.parent.mkdir(mode=0o755)
+                finally:
+                    os.umask(previous_umask)
             foundation.write_atomic(self.policy, (json.dumps(policy, indent=2) + '\n').encode(), 0o644)
             for name in FOUNDATION_REFRESH:
                 foundation.write_atomic(HOST_ROOT / 'usr/local/lib/qacey-codex' / name,
                                         (ROOT / 'infrastructure/codex' / name).read_bytes(), 0o644)
+            del record['policy_before']
             record['ready'] = True
             foundation.write_record(self.record, record)
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
-    parser.add_argument('--port', type=int, default=3939)
-    parser.add_argument('--node', default='/usr/bin/node')
+    parser.add_argument('--port', type=int)
+    parser.add_argument('--node')
     parser.add_argument('--apply', action='store_true')
     args = parser.parse_args(argv)
     if args.apply and os.geteuid() != ROOT_UID:
         raise PermissionError('Root is required to apply development provisioning.')
     provision = Provision(args.port, args.node)
     record, _ = provision.preflight()
-    print(f"Account: {record['user']}\nHome: {record['home']}\nOpenChamber: 127.0.0.1:{args.port}\nNode: {args.node}")
+    print(f"Account: {record['user']}\nHome: {record['home']}\nOpenChamber: 127.0.0.1:{record['port']}\nNode: {record['node']}")
     if args.apply:
         provision.apply()
         print('Helpers and disabled units installed. No runtime, credentials or services were started.')

@@ -17,7 +17,9 @@ from urllib.parse import urlsplit
 ROOT_UID = 0
 SYSTEM_ENV = {'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'HOME': '/root', 'LC_ALL': 'C'}
 DOCKER = ['/usr/bin/docker', '--host', 'unix:///var/run/docker.sock']
-MANAGED = ('compose.yml', 'Caddyfile', 'oauth2-proxy.cfg', 'allowed-emails.txt', 'versions.env')
+ORACLE_ROUTE = 'oracle-dev-route.yml'
+LEGACY_MANAGED = ('compose.yml', 'Caddyfile', 'oauth2-proxy.cfg', 'allowed-emails.txt', 'versions.env')
+MANAGED = (*LEGACY_MANAGED, ORACLE_ROUTE)
 
 
 def parse_json(text):
@@ -141,7 +143,8 @@ def render(settings, identity, versions, assets):
                     '@ISSUER@': json.dumps(settings['issuer']), '@CLIENT_ID@': json.dumps(settings['client_id']),
                     '@UID@': str(identity['uid']), '@GID@': str(identity['gid'])}
     result = {}
-    for target, source in (('compose.yml', 'compose.yml'), ('Caddyfile', 'Caddyfile.in'), ('oauth2-proxy.cfg', 'oauth2-proxy.cfg.in')):
+    for target, source in (('compose.yml', 'compose.yml'), ('Caddyfile', 'Caddyfile.in'), ('oauth2-proxy.cfg', 'oauth2-proxy.cfg.in'),
+                           (ORACLE_ROUTE, ORACLE_ROUTE + '.in')):
         text = (assets / source).read_text()
         text = re.sub(r'@[A-Z_]+@', lambda match: replacements[match.group(0)], text)
         result[target] = text.encode()
@@ -210,12 +213,15 @@ def hashes(files):
     return {name: hashlib.sha256(data).hexdigest() for name, data in files.items()}
 
 
-def verify_files(directory, record, *, pending=False):
+def verify_files(directory, record, *, pending=False, upgrade=False):
     expected = record.get('files')
-    if not isinstance(expected, dict) or set(expected) != set(MANAGED):
+    if upgrade and isinstance(expected, dict) and set(expected) == set(LEGACY_MANAGED):
+        if trusted(directory / ORACLE_ROUTE, optional=True):
+            raise ValueError('Refusing to adopt an unrelated Oracle development route file.')
+    elif not isinstance(expected, dict) or set(expected) != set(MANAGED):
         raise ValueError('Invalid managed gateway file record.')
     previous = record.get('previous_files', {}) if pending else {}
-    for name in MANAGED:
+    for name in expected:
         path = directory / name
         info = trusted(path, optional=pending)
         if info is None:

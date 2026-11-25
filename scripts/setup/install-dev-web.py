@@ -53,7 +53,7 @@ class Provision:
             if (not isinstance(previous, dict) or previous.get('schema') != 1
                     or any(previous.get(k) != identity[k] for k in ('user', 'uid', 'gid', 'home'))):
                 raise ValueError('Gateway installation belongs to a different development account.')
-            web.verify_files(self.directory, previous, pending=previous.get('ready') is not True)
+            web.verify_files(self.directory, previous, pending=previous.get('ready') is not True, upgrade=True)
         for path in (self.directory, self.lib):
             if web.trusted(path, directory=True, optional=True) and previous is None:
                 raise ValueError('Refusing an unrelated gateway installation directory.')
@@ -73,7 +73,7 @@ class Provision:
             record['previous_files'] = previous['files']
             if previous.get('ready') is not True:
                 # Finish the same interrupted publication; a new requested version must wait.
-                if record['files'] != previous['files']:
+                if any(record['files'][name] != digest for name, digest in previous['files'].items()):
                     raise ValueError('Finish the interrupted gateway version before preparing a different one.')
                 record['previous_files'] = previous.get('previous_files', {})
         return record, files

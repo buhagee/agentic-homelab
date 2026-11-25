@@ -32,8 +32,8 @@ not be called by Compose, deployment, first-time setup or the existing timers.
 
 - Default dedicated account: `dev-agent`; default home: `/home/dev-agent`.
 - Allow an explicit alternate absolute home such as `/mnt/ssd/dev-agent` on a
-  verified SSD mount. Keep it outside `/mnt/ssd/qacey`, which platform setup
-  recursively assigns to the operator. Require existing root-owned ancestors
+  verified SSD mount. Reject overlap with `/mnt/ssd/qacey`, `/mnt/hdd1/qacey` and
+  `/mnt/hdd2/qacey`, which platform setup recursively assigns to the operator. Require existing root-owned ancestors
   with group and other search permission and no group or other write permission.
   Reject ambiguous, dangerous or symlinked paths. Do not adopt an unrelated
   existing account or home. Reruns recognize this installation's root-owned record.
@@ -62,7 +62,7 @@ installer; managed remote bootstrap needs the packaged helpers.
 
 For this initial release, pin the reviewed official installer as well:
 
-- URL: `https://chatgpt.com/codex/install.sh`
+- URL: `https://github.com/openai/codex/releases/download/rust-v0.172.0/install.sh`
 - SHA-256: `b698d8eb50c0fbe0214ea57b5bf2af439054108404c6d2b872989db02f4bd574`
 
 The runtime helper defaults to dry-run. On `--apply`, download to a private
@@ -165,7 +165,7 @@ OpenCode home currently located below `/mnt/ssd/qacey/hermes/opencode-v2`.
 ## Primary references
 
 - [Codex stable release](https://github.com/openai/codex/releases/tag/rust-v0.172.0)
-- [Official installer](https://chatgpt.com/codex/install.sh)
+- [Official installer](https://github.com/openai/codex/releases/download/rust-v0.172.0/install.sh)
 - [Authentication](https://learn.chatgpt.com/docs/auth)
 - [Developer commands](https://learn.chatgpt.com/docs/developer-commands)
 - [Stable remote-control source](https://github.com/openai/codex/blob/rust-v0.172.0/codex-rs/cli/src/remote_control_cmd.rs)

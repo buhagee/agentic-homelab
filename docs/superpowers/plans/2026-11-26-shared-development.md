@@ -27,7 +27,7 @@
 - Existing customised or symlinked config must not be overwritten; Task1 exercises migration and target conflicts.
 - An interrupted sync must not destroy edits on retry; Task1 exercises recovery/partial state.
 - A user-controlled path or unrelated binary must not be overwritten by an installer; Task2 exercises preflight and atomic publication.
-- Terminal disconnects/web restarts must not own the Codex process lifetime; Task2 tests independent tmux invocation and documents host acceptance.
+- Bind the socket/forwarder lifetime to OpenChamber, require an already-active app for request-triggered forwarding, and preserve explicit bridge recovery. Terminal disconnects/web restarts must not own the Codex process lifetime; Task2 tests independent tmux invocation and documents host acceptance.
 - A missing/wrong identity or public origin must not expose terminal traffic; Task3 tests fail-closed rendering and actual proxy configuration syntax.
 
 ## Task 1: Portable baseline and conflict-aware native configuration
@@ -68,7 +68,7 @@
 - [x] Implement provisioning by reusing the existing account-record/trusted-path approach. Render correctly escaped units for nondefault homes. Install no account/groups and start no services. Use a private service environment file reference without fake working secrets.
 - [x] Implement verified versioned nonroot runtime installation and rollback-friendly publication. Verify the actual upstream CLI/package interface; record any upstream install-script requirement. Ensure source/CI has enough runtime packaging information to reproduce installation.
 - [x] Implement the launcher and separate tmux lifetime. Bind OpenChamber and its managed OpenCode child to loopback; use the pinned OpenCode policy without globally disabling user integrations.
-- [x] Load allowed MCP environment references from the completed sync and optional private `mcp-env.json` in the actual Codex/OpenChamber child launcher, rejecting reserved harness/loader variables and unknown keys. Do not put values in argv. Leave backend OPENCODE_PORT/HOST/SKIP_START unset to avoid automatic adoption of an unrelated server.
+- [x] Load declared MCP values for persistent Codex only from private `mcp-env.json` in the child, diagnose shell-only exports before tmux, and allow foreground OpenChamber to use declared exports or the file, rejecting reserved harness/loader variables and unknown keys. Do not put values in argv. Leave backend OPENCODE_PORT/HOST/SKIP_START unset to avoid automatic adoption of an unrelated server.
 - [x] Run the focused tests plus the existing Codex tests. Smoke-test runtime packaging/version/help in an isolated temporary directory if tooling/network permits; do not authenticate or activate services.
 - [x] Self-review, commit only Task2 files and report evidence for scoped independent review.
 
@@ -83,7 +83,7 @@
 
 **Interfaces:**
 - Consumes Task2 record/socket/helpers, existing `qacey-proxy` Docker network and version registry.
-- Produces an opt-in root-owned rendered gateway under `/etc/qacey-dev/web`, explicit public hostname/OIDC client/issuer/email allowlist inputs, private secret-file references, and documented manual activation/stop/update/rollback commands.
+- Produces an opt-in root-owned rendered gateway under `/etc/qacey-dev/web`, explicit public hostname/OIDC client/issuer/email allowlist inputs, a separate opt-in Oracle exact-host route with pre-activation marker verification and matching digest, private secret-file references, and documented manual activation/stop/update/rollback commands.
 - Produces a complete switching workflow: shared projects/skills/MCP source, promotion of UI additions, separate plugin/auth/model settings, one-writer handoff and branch/worktree usage.
 
 - [x] Write failing tests for hostname/issuer/email validation, no wildcard/bypass, missing secrets/activation settings, private networks/socket permissions, secure cookies, Authorization preservation, correct HTTPS/Host/Origin handling, and separate Compose project ownership.

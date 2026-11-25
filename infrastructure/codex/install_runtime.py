@@ -4,6 +4,7 @@
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -16,11 +17,19 @@ from codex_account import current_account
 RELEASE = Path(__file__).with_name("release.json")
 
 
+def check_command(account):
+    # The reviewed Linux installer publishes this absolute link through its current selection.
+    expected = account.home / ".codex/packages/standalone/current/bin/codex"
+    if os.path.lexists(account.codex) and (not account.codex.is_symlink() or os.readlink(account.codex) != str(expected)):
+        raise ValueError(f"Refusing to replace an unrelated Codex command at {account.codex}")
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument("--apply", action="store_true")
     args = parser.parse_args(argv)
     account = current_account()
+    check_command(account)
     release = json.loads(RELEASE.read_text())
     version = release["version"]
     print(f"Install Codex {version} into {account.bin_dir} from {release['url']}.", flush=True)
@@ -37,6 +46,7 @@ def main(argv=None):
         if hashlib.sha256(payload).hexdigest() != release["sha256"]:
             raise ValueError("Official installer SHA-256 checksum differs from the reviewed pin.")
         script.write_bytes(payload)
+        check_command(account)
         subprocess.run(["/bin/sh", str(script), "--release", version],
                        cwd=account.home, env=env, check=True)
     result = subprocess.run([str(account.codex), "--version"], cwd=account.home, env=env,

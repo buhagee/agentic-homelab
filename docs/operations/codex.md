@@ -64,7 +64,9 @@ findmnt --mountpoint /mnt/ssd
 ```
 
 Choose a sibling of `/mnt/ssd/qacey`. The platform's `server-setup-home.sh`
-recursively changes ownership of that subtree to the operator.
+recursively changes ownership of that subtree and its `/mnt/hdd1/qacey` and
+`/mnt/hdd2/qacey` counterparts to the operator. The provisioner rejects homes
+overlapping any of the three trees.
 
 ```sh
 python3 scripts/setup/install-codex.py --user dev-agent --home /mnt/ssd/dev-agent
@@ -110,7 +112,9 @@ The first runtime command is a dry-run. The second verifies the reviewed officia
 installer's SHA-256 before running it as the non-root account, requests stable
 Codex `0.172.0`, and disables the installer's automatic launch prompt. The full
 package retains the helpers needed by the managed daemon. A wrong-user or root
-runtime invocation is rejected.
+runtime invocation is rejected. If `~/.local/bin/codex` already exists, the
+installer requires the official link into this account’s standalone package.
+Reconcile an unrelated wrapper or symlink before installing.
 
 If the upstream installer changes, checksum verification deliberately stops.
 Review and update `infrastructure/codex/release.json`; do not bypass the check or

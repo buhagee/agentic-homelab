@@ -223,6 +223,22 @@ class SharedConfigTests(unittest.TestCase):
         self.apply()
         self.assertEqual(entry.resolve(), self.shared)
 
+    def test_codex_global_override_conflict_is_preserved_even_on_noop(self):
+        override = self.home / ".codex/AGENTS.override.md"
+        for installed in (False, True):
+            if installed:
+                self.apply()
+            self.put(override, "local override")
+            original = self.snapshot()
+            for apply in (False, True):
+                with self.subTest(installed=installed, apply=apply), self.assertRaisesRegex(ValueError, str(override)):
+                    self.sync.sync(self.home, self.source, apply)
+                self.assertEqual(self.snapshot(), original)
+            override.unlink()
+        self.put(override, " \n")
+        self.assertEqual(self.apply(), [])
+        self.assertEqual(override.read_text(), " \n")
+
     def test_shared_guidance_edit_is_preserved_until_promoted(self):
         self.apply()
         self.shared.write_text("# Locally edited shared rule\n")

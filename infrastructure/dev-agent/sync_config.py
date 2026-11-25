@@ -336,6 +336,9 @@ def sync(home: Path, source: Path, apply: bool = False) -> list[str]:
         _parents(home, path)
     if (home / ".config/opencode/opencode.jsonc").exists() or (home / ".config/opencode/opencode.jsonc").is_symlink():
         raise ValueError("Existing OpenCode JSONC needs explicit migration to opencode.json before shared sync.")
+    override = home / ".codex/AGENTS.override.md"
+    if _read(override)[1].strip():
+        raise ValueError(f"Reconcile the active Codex guidance override before shared sync: {override}")
     with _lock(home, apply):
         snapshots = {key: _read(path, key.endswith("_link")) for key, path in paths.items()}
         state = _state(mcp_config.parse_json(snapshots["state"][1], "shared sync state")) if snapshots["state"][0] != "missing" else None

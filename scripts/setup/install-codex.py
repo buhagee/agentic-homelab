@@ -43,6 +43,10 @@ def checked_home(user, raw):
                 "root", "run", "sbin", "sys", "tmp", "usr", "var", "lost+found"}
     if len(parts) < 2 or parts[0] in reserved:
         raise ValueError(f"Unsafe home location: {home}")
+    for disk in ("ssd", "hdd1", "hdd2"):
+        platform = HOST_ROOT / "mnt" / disk / "qacey"
+        if home.is_relative_to(platform) or platform.is_relative_to(home):
+            raise ValueError(f"Home overlaps platform-managed storage: {platform}")
     # Reject even missing paths inside another regular user's registered home.
     for entry in pwd.getpwall():
         other = Path(entry.pw_dir)
@@ -135,6 +139,33 @@ def check_identity(record, account, group, *, check_lock):
             raise ValueError("The dedicated account must have a locked password.")
 
 
+@contextmanager
+def provision_lock():
+    # Both native provisioners publish account-dependent files. Keep one private inode.
+    path = HOST_ROOT / "etc/qacey-dev-provision.lock"
+    trusted_parents(path)
+    flags = os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK
+    try:
+        fd = os.open(path, flags | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        trusted(path, directory=False)
+        fd = os.open(path, flags)
+    try:
+        info = os.fstat(fd)
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != ROOT_UID or info.st_nlink != 1
+                or stat.S_IMODE(info.st_mode) != 0o600 or info.st_size):
+            raise ValueError(f"Expected an empty, private root-owned provisioning lock at {path}")
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise ValueError("Another native provisioner is running. Retry when it finishes.") from None
+        if not os.path.samestat(info, path.lstat()):
+            raise ValueError("Provisioning lock changed. Review its ownership before retrying.")
+        yield
+    finally:
+        os.close(fd)
+
+
 class Provision:
     def __init__(self, user, home):
         self.user = user
@@ -184,17 +215,6 @@ class Provision:
                 raise ValueError(f"Refusing to adopt existing home {self.home}")
         return record, account
 
-    @contextmanager
-    def lock(self):
-        # Serialize the first publication as well as updates, with no lockfile or host writes.
-        trusted_parents(self.record.parent)
-        fd = os.open(self.record.parent.parent, os.O_DIRECTORY | os.O_NOFOLLOW)
-        try:
-            fcntl.flock(fd, fcntl.LOCK_EX)
-            yield
-        finally:
-            os.close(fd)
-
     def initial_record(self):
         # Publish ownership before useradd. Its GECOS marker identifies a partially created account.
         record = dict(schema=1, user=self.user, home=str(self.home), uid=None, gid=None,
@@ -225,7 +245,8 @@ class Provision:
             os.close(home_fd)
 
     def apply(self):
-        with self.lock():
+        self.preflight()
+        with provision_lock():
             record, account = self.preflight()
             if record is None:
                 record = self.initial_record()

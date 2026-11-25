@@ -50,18 +50,19 @@ unsupported JSONC configurations and conflicting client overrides explicitly.
 Initially share the public Context7 endpoint only. Do not import Docker-only
 hostnames or Hermes's personal-service integrations.
 
-For env-backed MCPs, the launcher reads only the names recorded by a completed
-sync. Forward those explicitly allowed variables and optionally load their values
-from user-owned mode0600 `~/.config/qacey-dev/mcp-env.json`. Never use that file
-to override HOME/PATH, loader/shell settings or harness/provider authentication.
-Load it inside the actual Codex/OpenChamber process launcher so a persistent tmux
-server does not retain stale credentials or expose them through command arguments.
+For env-backed MCPs, forward only names recorded by completed sync. Foreground
+OpenChamber can use declared variables from its environment. Persistent Codex
+sessions load their values only from the development user's mode0600
+`~/.config/qacey-dev/mcp-env.json`. The public attach command diagnoses shell-only
+values before invoking tmux. The new Codex child loads the file itself. The tmux
+server and command arguments receive no MCP values. Optional names may remain
+unset. Reject process, loader and provider-auth overrides in both launch modes.
 
 Codex uses `[mcp_servers.<name>]`; OpenCode V2 uses `mcp.servers.<name>`, `type`,
 argv `command`, and `disabled`. Preserve client-specific OAuth settings and
 permission/model/plugin choices. Existing Codex foundation guidance may be
 migrated to the shared file only when unmodified; otherwise stop with a useful
-conflict. Native global guidance must resolve to the same file after sync.
+conflict. Native global guidance must resolve to the same file after sync. Reconcile an active Codex global override before applying the baseline.
 
 Both runtimes discover `.agents/skills` natively. Do not duplicate skills into
 client-specific directories or symlink plugin runtime/auth directories. An
@@ -114,8 +115,14 @@ Create a separate opt-in Compose project `qacey-dev-web`; the main platform's
 OAuth2 Proxy routes over a private internal network to Caddy; Caddy proxies a
 mounted Unix socket to a native `systemd-socket-proxyd` bridge and the loopback
 OpenChamber listener. Neither the adapter nor native backend has a published
-TCP port. The Unix socket is restricted to the dedicated account. Caddy runs as
+TCP port. Install a dedicated exact-host Oracle router above the wildcard priority and disable access logs for this hostname on both Traefik hops. Gateway activation requires the digest of the Oracle fragment verified with a response header and harmless query markers on the live edge. The Unix socket is restricted to the dedicated account. Caddy runs as
 that numeric UID/GID; OAuth2 Proxy runs as a separate unprivileged UID.
+
+Order the socket after OpenChamber and bind its lifetime to that service. Use
+a late socket unit with explicit startup/shutdown dependencies. Socket-triggered
+forwarding requires the application and socket to already be active, and stops
+with the socket. Explicit recovery restores the bridge after service loss. The
+separate tmux service remains independent.
 
 This extra small adapter is deliberate: pinned OAuth2 Proxy has separate Unix
 HTTP and WebSocket transports, so direct Unix upstreams do not reliably carry

@@ -63,8 +63,7 @@ clones, never from the operator's production Git metadata.
 
 Reviewed runtime pins are Codex `0.172.0`, OpenCode `2.4.1`, OpenChamber `2.8.0`,
 OAuth2 Proxy `v7.15.6` and Caddy `2.11.9-alpine`. Native download hashes and npm
-lock inputs live with the runtime assets; gateway image pins come from
-`versions.env`. Required upstream native install scripts are allowed. The known
+lock inputs live in `infrastructure/dev-agent`. Review native OpenCode release assets and hashes there independently of Renovate’s container-only `OPENCODE_V2_VERSION` updates. Gateway image pins come from `versions.env`. Required upstream native install scripts are allowed. The known
 npm `allowScripts` review warning is distinct from a failed native build:
 version checks and an actual PTY spawn/input/resize/exit must still pass.
 
@@ -73,12 +72,15 @@ version checks and an actual PTY spawn/input/resize/exit must still pass.
 From the reviewed repository checkout, first run the dry-run:
 
 ```sh
-python3 scripts/setup/install-dev-agent.py --node /usr/bin/node
-sudo python3 scripts/setup/install-dev-agent.py --node /usr/bin/node --apply
+python3 scripts/setup/install-dev-agent.py
+sudo python3 scripts/setup/install-dev-agent.py --apply
 ```
 
-Use the same `--node` arguments for both commands if Node lives elsewhere. The
-optional `--port` changes only the OpenChamber loopback port (default `3939`).
+The first installation defaults to Node at `/usr/bin/node` and OpenChamber on
+port `3939`. Later runs preserve both recorded settings. To select a different
+Node executable, add `--node /opt/node/bin/node` to both the preview and apply
+commands, using the actual path on your server. Use `--port` to select a new
+OpenChamber loopback port.
 The installer consumes `/etc/qacey-codex/installation.json` and reuses its
 account/home; the examples use the default `dev-agent`, but substitute the
 recorded account when it differs. It installs no users/groups or credentials.
@@ -151,6 +153,83 @@ Managed edits are detected: change the source/settings and re-provision instead
 of silently editing rendered files. A partial publication can finish the same
 version; a conflicting version or later managed edit must be reconciled first.
 
+### Install and verify the Oracle development route
+
+Before starting the gateway, install the rendered `oracle-dev-route.yml` on the
+Oracle host. It matches only the chosen HTTPS hostname at priority 150, above the
+existing wildcard (100) and below platform status (200). It uses the existing
+WireGuard upstream, TLS resolver and security middleware. Choose an unused
+development hostname under the platform domain. The fragment lives outside the
+automatic Oracle deployment and requires a deliberate operator installation.
+
+On the home server, copy the nonsecret fragment to the Oracle operator using
+your existing private administrative access. Substitute the SSH alias:
+
+```sh
+sudo cat /etc/qacey-dev/web/oracle-dev-route.yml | ssh ORACLE-SSH 'umask 077; cat > oracle-dev-route.yml'
+```
+
+On Oracle, verify the destination is absent on first install. On updates, first
+stop the gateway and compare the installed digest with the one previously
+verified. Use a staging file and rename it into the watched directory:
+
+```sh
+edge_dir=/opt/qacey/traefik/oracle/dynamic
+sudo install -m 0644 -o root -g root "$HOME/oracle-dev-route.yml" "$edge_dir/.qacey-dev-edge.pending"
+sudo mv -T "$edge_dir/.qacey-dev-edge.pending" "$edge_dir/qacey-dev-edge.yml"
+sudo sha256sum "$edge_dir/qacey-dev-edge.yml"
+```
+
+Wait for the file provider to reload, then run the following in Bash on Oracle.
+Set `dev_host` to your development hostname and `control_host` to the existing
+logged platform-status hostname. Use the public HTTPS ingress. The proof header
+confirms the exact router handled the request, even if the home gateway is still
+offline. The positive control confirms subsequent requests reached the active
+access log and the buffered writer flushed past the development probe.
+
+```bash
+(
+  set -euo pipefail
+  dev_host=REPLACE-WITH-DEVELOPMENT-HOST
+  control_host=REPLACE-WITH-PLATFORM-STATUS-HOST
+  marker=$(openssl rand -hex 16)
+  edge_dir=/opt/qacey/traefik/oracle/dynamic
+  edge_log=/opt/qacey/traefik/oracle/logs/access.log
+  before=$(sudo sha256sum "$edge_dir/qacey-dev-edge.yml")
+  curl --silent --show-error --max-time 15 --dump-header - --output /dev/null \
+    "https://$dev_host/?qacey_probe=dev-$marker" |
+    tr -d '\r' | grep -Fxi "X-Qacey-Dev-Edge: $dev_host"
+  curl --silent --show-error --max-time 15 --output /dev/null \
+    "https://$control_host/?qacey_probe=control-$marker"
+  # Give the buffered log writer later, harmless HEAD requests even on an idle site.
+  for attempt in {1..120}; do
+    if sudo grep -Fq "control-$marker" "$edge_log"; then break; fi
+    curl --head --silent --show-error --max-time 10 --output /dev/null "https://$control_host/"
+    sleep 1
+  done
+  sudo grep -Fq "control-$marker" "$edge_log"
+  # Exit 1 means absent. Any read error or matching development marker fails.
+  result=0
+  sudo grep -Fq "dev-$marker" "$edge_log" || result=$?
+  test "$result" -eq 1
+  test "$before" = "$(sudo sha256sum "$edge_dir/qacey-dev-edge.yml")"
+  printf 'Verified Oracle fragment: %s\n' "$before"
+)
+```
+
+Proceed only when the check succeeds and the final digest matches the installed
+fragment you reviewed. If log rotation occurred during the check, repeat with a
+fresh marker. Keep requests free of credentials. Supply the verified Oracle
+digest at each explicit gateway start. The home helper checks it against its
+rendered fragment. The operator attests to the remote installation and marker
+result; the home server cannot inspect Oracle's live configuration. Repeat
+verification after edge logging or route changes. To roll back, first stop the
+home gateway with `sudo qacey-dev-web stop`, then remove just this fragment on
+Oracle with `sudo rm /opt/qacey/traefik/oracle/dynamic/qacey-dev-edge.yml` or
+restore the previously verified version before restarting its matching gateway.
+
+### Prepare local credentials
+
 Create these files in your administrative terminal, owned by root with mode
 `0600`, then edit them locally. On the **first installation only**, this command
 creates empty files and refuses to overwrite existing ones:
@@ -203,11 +282,9 @@ WebSocket transport that cannot directly use its Unix HTTP dialer. It preserves
 OpenChamber's Authorization header, canonical HTTPS/Host, streaming and terminal
 WebSockets; wrong origins and mutation/WebSocket requests without Origin are
 rejected. There are no unauthenticated application-route or trusted-IP bypasses.
-IdP access tokens are not substituted for OpenChamber authentication. This router
-opts out of Traefik access logs, OAuth request logs are disabled, and Caddy's HTTP
+IdP access tokens are not substituted for OpenChamber authentication. Both the dedicated Oracle route and the home route opt out of Traefik access logs, OAuth request logs are disabled, and Caddy's HTTP
 error-request logger is excluded because terminal/OAuth URLs may contain tokens.
-Non-request startup diagnostics remain available. Keep any additional upstream
-access logging subject to the same URL-token handling policy.
+Non-request startup diagnostics remain available.
 
 The Compose project is **`qacey-dev-web`**, separate from `qacey-platform`.
 The main platform's `up --remove-orphans` therefore does not own these containers.
@@ -221,7 +298,7 @@ Activation is an explicit operator step after reviewing the PR and configuration
 ```sh
 sudo systemctl daemon-reload
 sudo systemctl start qacey-codex-tmux.service qacey-openchamber.service qacey-dev-proxy.socket
-sudo qacey-dev-web start
+sudo qacey-dev-web start --verified-oracle-route VERIFIED-ORACLE-SHA256
 sudo qacey-dev-web status
 sudo -iu dev-agent qacey-dev status
 ```
@@ -277,13 +354,16 @@ named `servers` with `transport: stdio|http`, optional `enabled`, stdio `command
 are environment references, never literal manifest values. Unsupported/unknown
 fields and JSONC are rejected rather than guessed.
 
-Shared MCP variables can be supplied in a user-owned mode `0600` file
-`~/.config/qacey-dev/mcp-env.json`. It contains only declared variable names and
-string values. The launcher rejects reserved loader, harness and provider-login
-names. This file is not a way to override HOME/PATH, inject shell startup, or
-share provider credentials. Values load in the actual Codex/OpenChamber child,
-so a persistent tmux server does not retain stale MCP environment values. Restart
-or resume the relevant child deliberately after changing its environment.
+For persistent `qacey-dev codex PROJECT` sessions, put MCP values in the
+development user's mode `0600` `~/.config/qacey-dev/mcp-env.json` file. It
+accepts only names declared by a completed sync and string values. An MCP may
+leave optional values unset. The public launcher diagnoses a shell-exported
+declared name missing from the file before tmux is invoked. Each new Codex
+process loads the current file under the development account. Reattaching
+preserves the existing process environment. Restart the child deliberately to
+load changed values. The foreground OpenChamber launcher also accepts declared
+variables from its own environment, with file values taking precedence.
+Reserved loader, harness and provider-login names are rejected.
 
 Before applying a baseline, stop native configuration editors. They do not
 participate in the sync lock. Review the source Git diff and run:
@@ -298,7 +378,7 @@ or secrets. Unmanaged local fields survive. A changed previously managed value
 causes a conflict. Resolve it by reconciling the reviewed baseline/client change,
 not deleting the sync state or forcing an overwrite. An interrupted apply resumes
 only for the same baseline with unchanged before/after files. Repeating a
-completed sync is a no-op.
+completed sync is a no-op. Reconcile any active `~/.codex/AGENTS.override.md` before syncing global guidance.
 
 Qacey auto-deploy is useful for distributing the reviewed source. It deliberately
 does not apply personal configuration, upgrade runtimes, install every plugin or
@@ -327,8 +407,23 @@ sudo systemctl stop qacey-openchamber.service
 sudo systemctl stop qacey-codex-tmux.service
 ```
 
-Stopping tmux ends its active Codex processes. Save work first. The gateway bridge
-does not restart an intentionally stopped native application.
+Stopping tmux ends its active Codex processes. Save work first. Stopping OpenChamber also removes the bridge socket and stops its forwarder.
+If OpenChamber fails unexpectedly, the bridge closes. Browser requests cannot
+start either prerequisite of the forwarder. After checking OpenChamber's
+recovery and its managed backend, explicitly restore the bridge:
+
+```sh
+sudo systemctl start qacey-openchamber.service
+sudo systemctl start qacey-dev-proxy.socket
+```
+
+The socket is a late member of `multi-user.target` and binds to OpenChamber.
+Its ordering indicates the app unit has started, not that the HTTP backend is
+ready. To migrate a socket enabled using the old early-boot unit, record whether
+it was enabled, then run `sudo systemctl reenable qacey-dev-proxy.socket` after
+installing the new units and reloading systemd, only if it was enabled and you
+want to preserve boot startup. For a previously disabled socket, leave it
+disabled.
 
 For updates, record current service enablement/active states and finish affected
 work. Stop the gateway, review new pins and package lock/hash changes, rerun root
@@ -336,8 +431,7 @@ preparation, install the matching runtimes as the account, then sync the reviewe
 baseline. Run `systemctl daemon-reload` after unit changes. If changing the native port,
 stop/restart the socket proxy service as well so it loads the new target. Restart only services
 that were previously active and that you intend to restore. Root provisioning
-never enables/restarts them. Update the gateway with an explicit `start` after
-`check`; this recreates its containers and disconnects remote sessions.
+never enables/restarts them. Update the gateway with an explicit `start` after repeating the Oracle marker check with its matching digest; this recreates its containers and disconnects remote sessions.
 
 Retain previous version directories and the previous reviewed checkout/installed
 record for rollback. Re-provision and select the previous reviewed release as a
@@ -383,7 +477,8 @@ HTTP/WebSocket proxy. These checks do not prove the live server's deployment.
 - [ ] Wrong-Origin and missing-Origin terminal/mutation requests fail; OpenChamber bearer-authenticated requests succeed.
 - [ ] OpenChamber reports its managed OpenCode child ready, not merely HTTP health; provider login stays private.
 - [ ] Phone terminal input/resize/reconnect, approval display and ordinary edit/build/test work.
-- [ ] Restart OpenChamber and reconnect: the independently owned tmux/Codex process survives.
+- [ ] Stop OpenChamber while the gateway is up: the socket path disappears, the forwarder stops and a browser retry leaves the app stopped. Confirm the independent tmux/Codex session survives.
+- [ ] Start OpenChamber, confirm the managed OpenCode child is ready, start the socket, then reconnect. Exercise unexpected service loss and the same bridge recovery in a maintenance window.
 - [ ] Gateway stop cuts an already-open WebSocket; native jobs continue until deliberately stopped.
 - [ ] Boot/restart policy, explicit sudo handoff and encrypted backup/restore have been exercised.
 
@@ -405,4 +500,8 @@ behaviour in mind.
 - [OAuth2 Proxy configuration](https://oauth2-proxy.github.io/oauth2-proxy/configuration/overview/)
 - [Caddy reverse proxy and Unix upstreams](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy)
 - [Compose raw env files](https://docs.docker.com/reference/compose-file/container-spec/)
+- [Traefik per-router observability](https://doc.traefik.io/traefik/v3.8/reference/routing-configuration/http/routing/observability/)
+- [Traefik access logs](https://doc.traefik.io/traefik/v3.8/reference/install-configuration/observability/logs-and-accesslogs/)
+- [systemd unit relationships](https://www.freedesktop.org/software/systemd/man/257/systemd.unit.html)
+- [systemd socket dependencies](https://www.freedesktop.org/software/systemd/man/257/systemd.socket.html)
 - [systemd socket proxy](https://www.freedesktop.org/software/systemd/man/latest/systemd-socket-proxyd.html)

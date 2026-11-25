@@ -1,4 +1,5 @@
 import configparser
+import fcntl
 import grp
 import io
 import json
@@ -94,6 +95,41 @@ class ProvisionTests(unittest.TestCase):
         self.assertFalse((self.home / '.config').exists())
         self.assertTrue(all(command[0] == '/usr/bin/passwd' for command in self.commands))
 
+    def test_bridge_stops_on_app_loss_and_request_cannot_start_prerequisites(self):
+        self.setup.main(['--apply'])
+        unit_dir = self.host / 'etc/systemd/system'
+
+        def unit(name):
+            result = configparser.ConfigParser(interpolation=None)
+            result.read(unit_dir / name)
+            return result
+
+        app = 'qacey-openchamber.service'
+        socket = 'qacey-dev-proxy.socket'
+        bridge = unit(socket)
+        # BindsTo + After closes the socket on intentional stop and unexpected app loss.
+        self.assertEqual(bridge['Unit']['BindsTo'], app)
+        self.assertIn(app, bridge['Unit']['After'].split())
+        self.assertEqual(bridge['Socket']['RemoveOnStop'], 'true')
+        # Operator recovery starts a late socket after a normally initialized service.
+        self.assertEqual(bridge['Unit']['DefaultDependencies'], 'no')
+        self.assertEqual(bridge['Unit']['Requires'], 'sysinit.target')
+        self.assertIn('sysinit.target', bridge['Unit']['After'].split())
+        self.assertEqual(bridge['Unit']['Before'], 'shutdown.target')
+        self.assertEqual(bridge['Unit']['Conflicts'], 'shutdown.target')
+        self.assertEqual(bridge['Install']['WantedBy'], 'multi-user.target')
+        # The socket's stop job also terminates a previously activated proxyd.
+        forwarder = unit('qacey-dev-proxy.service')['Unit']
+        self.assertEqual(forwarder['PartOf'], socket)
+        self.assertEqual(set(forwarder['Requisite'].split()), {app, socket})
+        self.assertEqual(set(forwarder['After'].split()), {app, socket})
+        for pulls_in_start in ('Wants', 'Requires', 'BindsTo', 'Upholds'):
+            self.assertNotIn(pulls_in_start, forwarder)
+        self.assertNotIn('Sockets', unit('qacey-dev-proxy.service')['Service'])
+        tmux = (unit_dir / 'qacey-codex-tmux.service').read_text()
+        self.assertNotIn(app, tmux)
+        self.assertNotIn('qacey-dev-proxy', tmux)
+
     def test_policy_preserves_unrelated_values_and_rejects_conflicting_binary(self):
         directory = self.host / 'etc/openchamber'
         directory.mkdir()
@@ -122,6 +158,124 @@ class ProvisionTests(unittest.TestCase):
         self.assertEqual(json.loads(self.record.read_text())['port'], 4949)
         self.assertFalse(any(self.host.rglob('*.wants')))
         self.assertIn('127.0.0.1:4949', (self.host / 'etc/systemd/system/qacey-dev-proxy.service').read_text())
+
+    def test_omitted_options_preserve_recorded_port_and_node(self):
+        self.setup.main(['--port', '4949', '--node', '/opt/node/bin/node', '--apply'])
+        with redirect_stdout(io.StringIO()) as output:
+            self.setup.main([])
+        self.assertIn('127.0.0.1:4949', output.getvalue())
+        self.assertIn('/opt/node/bin/node', output.getvalue())
+        for args, port, node in (([], 4949, '/opt/node/bin/node'),
+                                 (['--port', '5999'], 5999, '/opt/node/bin/node'),
+                                 (['--node', '/opt/next/bin/node'], 5999, '/opt/next/bin/node')):
+            self.setup.main([*args, '--apply'])
+            record = json.loads(self.record.read_text())
+            self.assertEqual((record['port'], record['node']), (port, node))
+            proxy = self.host / 'etc/systemd/system/qacey-dev-proxy.service'
+            self.assertIn(f'127.0.0.1:{port}', proxy.read_text())
+
+    def test_restrictive_umask_creates_traversable_policy_only_for_new_directory(self):
+        directory = self.host / 'etc/openchamber'
+        directory.mkdir(mode=0o700)
+        with self.assertRaisesRegex(ValueError, 'policy directory'):
+            self.setup.main(['--apply'])
+        self.assertEqual(stat.S_IMODE(directory.stat().st_mode), 0o700)
+        directory.rmdir()
+        before = os.umask(0o077)
+        try:
+            self.setup.main(['--apply'])
+            self.assertEqual(stat.S_IMODE(directory.stat().st_mode), 0o755)
+            self.setup.main(['--apply'])
+        finally:
+            os.umask(before)
+
+    def test_policy_directory_is_traversable_even_if_interrupted_at_mkdir(self):
+        directory = self.host / 'etc/openchamber'
+        mkdir = Path.mkdir
+        original_umask = os.umask(0o077)
+        try:
+            for timing in ('before', 'after'):
+                def interrupt(path, *args, **kwargs):
+                    if path == directory and timing == 'before':
+                        raise OSError('interrupted before mkdir')
+                    mkdir(path, *args, **kwargs)
+                    if path == directory and timing == 'after':
+                        raise OSError('interrupted after mkdir')
+
+                with self.subTest(timing=timing), patch.object(Path, 'mkdir', interrupt):
+                    with self.assertRaisesRegex(OSError, 'interrupted'):
+                        self.setup.main(['--apply'])
+                    self.assertEqual(os.umask(0o077), 0o077)
+                    self.assertFalse(json.loads(self.record.read_text())['ready'])
+                    self.assertEqual(directory.exists(), timing == 'after')
+            self.assertEqual(stat.S_IMODE(directory.stat().st_mode), 0o755)
+            self.assertFalse((directory / 'policy.json').exists())
+            self.setup.main(['--apply'])
+            self.assertTrue((directory / 'policy.json').is_file())
+            self.assertTrue(json.loads(self.record.read_text())['ready'])
+            self.assertEqual(os.umask(0o077), 0o077)
+        finally:
+            os.umask(original_umask)
+
+    def test_interrupted_upgrade_retries_only_recorded_before_or_after_policy(self):
+        self.setup.main(['--apply'])
+        policy = self.host / 'etc/openchamber/policy.json'
+        target = json.loads(policy.read_text())['opencodeBinary']
+        old = target.replace('opencode-2.4.1/', 'opencode-2.4.0/')
+        write = self.setup.foundation.write_atomic
+        for when in ('before', 'after'):
+            with self.subTest(when=when):
+                record = json.loads(self.record.read_text())
+                record['opencode_version'] = '2.4.0'
+                self.record.write_text(json.dumps(record))
+                policy.write_text(json.dumps({'opencodeBinary': old, 'other': True}))
+
+                def interrupt(path, data, mode):
+                    if path == policy and when == 'before':
+                        raise OSError('interrupted')
+                    write(path, data, mode)
+                    if path == policy and when == 'after':
+                        raise OSError('interrupted')
+
+                with patch.object(self.setup.foundation, 'write_atomic', side_effect=interrupt), self.assertRaises(OSError):
+                    self.setup.main(['--apply'])
+                pending = self.record.read_bytes()
+                self.assertFalse(json.loads(pending)['ready'])
+                actual = policy.read_bytes()
+                self.assertEqual(json.loads(actual)['opencodeBinary'], old if when == 'before' else target)
+                for drift in ({'opencodeBinary': '/unrelated/tool'}, {}):
+                    policy.write_text(json.dumps(drift))
+                    with self.assertRaisesRegex(ValueError, 'different OpenCode binary'):
+                        self.setup.main(['--apply'])
+                    self.assertEqual(self.record.read_bytes(), pending)
+                policy.write_bytes(actual)
+                self.setup.main(['--apply'])
+                self.assertTrue(json.loads(self.record.read_text())['ready'])
+                self.assertEqual(json.loads(policy.read_text()), {'opencodeBinary': target, 'other': True})
+
+    def test_native_and_foundation_share_a_permanent_private_provision_lock(self):
+        lock = self.host / 'etc/qacey-dev-provision.lock'
+        self.setup.main([])
+        self.assertFalse(lock.exists())
+        self.setup.main(['--apply'])
+        info = lock.stat()
+        self.assertTrue(stat.S_ISREG(info.st_mode))
+        self.assertEqual((info.st_uid, stat.S_IMODE(info.st_mode)), (self.uid, 0o600))
+        with lock.open('rb') as held:
+            fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            for install in (lambda: self.setup.main(['--apply']),
+                            lambda: self.setup.foundation.Provision('dev-agent', self.home).apply()):
+                with self.assertRaisesRegex(ValueError, 'Another native provisioner'):
+                    install()
+        self.setup.main(['--apply'])
+        self.assertTrue(os.path.samestat(info, lock.stat()))
+        lock.chmod(0o644)
+        with self.assertRaisesRegex(ValueError, 'private root-owned provisioning lock'):
+            self.setup.main(['--apply'])
+        lock.unlink()
+        lock.symlink_to(self.record)
+        with self.assertRaises(ValueError):
+            self.setup.main(['--apply'])
 
     def test_unrelated_files_symlinks_and_unit_dropins_fail_before_writes(self):
         targets = [self.host / 'usr/local/lib/qacey-dev', self.host / 'usr/local/bin/qacey-dev',

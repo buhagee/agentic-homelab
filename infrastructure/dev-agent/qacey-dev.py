@@ -49,9 +49,9 @@ def main(argv=None):
                                '--property=Id,ActiveState,SubState,UnitFileState', *UNITS],
                               env=account.environment(), cwd=account.home).returncode
     if args.operation in ('codex', '_codex-run'):
-        env = account.environment() if args.operation == 'codex' else dev_context.environment(account)
-        project = dev_context.foundation.checked_project(account, args.project, env)
+        project = dev_context.foundation.checked_project(account, args.project, account.environment())
         if args.operation == '_codex-run':
+            env = dev_context.environment(account, persistent=True)
             os.chdir(project)
             return os.execve(account.codex, [str(account.codex), '-C', str(project)], env)
         session = 'codex-' + hashlib.sha256(str(project).encode()).hexdigest()[:20]
@@ -60,7 +60,7 @@ def main(argv=None):
         return subprocess.run(['/usr/bin/tmux', '-N', '-S', TMUX_SOCKET, 'new-session',
                                '-A', '-s', session, '-c', str(project),
                                '/usr/local/bin/qacey-dev', '_codex-run', str(project)],
-                              env=env, cwd=project).returncode
+                              env=dev_context.environment(account, tmux_client=True), cwd=project).returncode
     dev_context.check_openchamber_settings(account)
     env = dev_context.environment(account)
     for name in ('OPENCHAMBER_UI_PASSWORD', 'OPENCODE_PASSWORD'):

@@ -77,6 +77,18 @@ class WebTests(unittest.TestCase):
         self.assertIn('respond @noWsOrigin 403', caddy)
         self.assertIn('respond @noMutationOrigin 403', caddy)
 
+    def test_oracle_route_overrides_only_the_development_hostname(self):
+        files = self.web.render(self.settings, self.identity, self.versions, ASSETS / 'web')
+        edge = files['oracle-dev-route.yml'].decode()
+        self.assertIn('rule: "Host(`dev.example.test`)"', edge)
+        self.assertNotIn('HostRegexp', edge)
+        self.assertIn('priority: 150', edge)
+        for line in ('entryPoints: [websecure]', 'certResolver: letsencrypt',
+                     'middlewares: [secure-headers, qacey-dev-edge-marker]', 'service: home-server-svc',
+                     'accessLogs: false', 'X-Qacey-Dev-Edge: "dev.example.test"'):
+            self.assertIn(line, edge)
+        self.assertNotIn('accessLog:', edge)
+
     def test_raw_secrets_preserve_dollars_and_quotes_without_shell_parsing(self):
         secret = self.directory / 'oauth2.env'
         secret.write_text('OAUTH2_PROXY_CLIENT_SECRET=abc$literal"quoted\'value\nOAUTH2_PROXY_COOKIE_SECRET=' + base64.b64encode(b'x' * 32).decode() + '\n')
@@ -238,6 +250,21 @@ class WebProvisionTests(unittest.TestCase):
         with self.assertRaises(ValueError): self.setup.main([*self.args, '--apply'])
         self.assertTrue(target.read_text().endswith('# local edit\n'))
 
+    def test_previous_gateway_file_set_upgrades_without_adopting_a_collision(self):
+        self.setup.main([*self.args, '--apply'])
+        path = self.directory / 'installation.json'
+        record = json.loads(path.read_text())
+        record['files'].pop('oracle-dev-route.yml')
+        path.write_text(json.dumps(record))
+        with self.assertRaisesRegex(ValueError, 'unrelated Oracle'):
+            self.setup.main([*self.args, '--apply'])
+        (self.directory / 'oracle-dev-route.yml').unlink()
+        self.setup.main([*self.args, '--apply'])
+        self.assertIn('oracle-dev-route.yml', json.loads(path.read_text())['files'])
+
+    def verified_route(self):
+        return json.loads((self.directory / 'installation.json').read_text())['files']['oracle-dev-route.yml']
+
     def test_interrupted_publication_can_finish_but_cannot_change_version(self):
         provision = self.setup.Provision(self.settings)
         original = self.setup.write_atomic
@@ -284,7 +311,7 @@ class WebProvisionTests(unittest.TestCase):
         entry.main(['check'])
         self.assertIn(['config', '--quiet'], [command[-2:] for command in commands])
         self.assertFalse(any('up' in command for command in commands))
-        with self.assertRaises(FileNotFoundError): entry.main(['start'])
+        with self.assertRaises(FileNotFoundError): entry.main(['start', '--verified-oracle-route', self.verified_route()])
         self.assertFalse(any('up' in command for command in commands))
         self.assertNotIn('not-a-live-secret', self.output.getvalue())
 
@@ -303,15 +330,25 @@ class WebProvisionTests(unittest.TestCase):
                 raise RuntimeError('tmux is inactive')
             return '2.30.0' if 'version' in command else ''
         with patch.object(Path, 'lstat', lstat), patch.object(entry, 'run', side_effect=run):
-            with self.assertRaises(RuntimeError): entry.main(['start'])
+            with self.assertRaises(RuntimeError): entry.main(['start', '--verified-oracle-route', self.verified_route()])
         self.assertFalse(any('up' in command for command in commands))
+
+    def test_start_requires_attestation_for_current_hostname_and_fragment_before_docker(self):
+        entry, commands = self.lifecycle()
+        self.credentials()
+        old = self.verified_route()
+        self.setup.Provision(dict(self.settings, hostname='other.example.test')).apply()
+        for flags in ([], ['--verified-oracle-route', old], ['--verified-oracle-route', 'confirmed']):
+            with self.subTest(flags=flags), self.assertRaisesRegex(ValueError, 'Verify the installed Oracle route'):
+                entry.main(['start', *flags])
+        self.assertEqual(commands, [])
 
     def test_explicit_start_recreates_containers_to_load_replaced_bind_files(self):
         entry, commands = self.lifecycle()
         compose, _ = self.web.compose_command(self.directory)
         with patch.object(entry, 'check', return_value=compose) as check:
-            entry.main(['start'])
-        check.assert_called_once_with(require_socket=True)
+            entry.main(['start', '--verified-oracle-route', self.verified_route()])
+        check.assert_called_once_with(require_socket=True, verified_oracle_route=self.verified_route())
         self.assertEqual(commands[-1][-3:], ['up', '-d', '--force-recreate'])
 
     def test_stop_revokes_by_fixed_project_even_with_broken_config(self):
@@ -342,6 +379,19 @@ class GatewayFixtureTests(unittest.TestCase):
             self.assertTrue(path.is_dir())
             self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o700)
         self.assertNotIn('CADDY_UNKNOWN', env)
+
+    def test_transport_releases_backend_after_port_or_adaptation_failure(self):
+        for failure in ('bind', 'adapt'):
+            with self.subTest(failure=failure), patch.object(self.fixture, 'UnixHTTP') as backend, \
+                    patch.object(self.fixture.threading, 'Thread'), patch.object(self.fixture.socket, 'socket') as tcp, \
+                    patch.object(self.fixture, 'transport_config', side_effect=ValueError('adapt failed')) as adapt:
+                if failure == 'bind':
+                    tcp.return_value.__enter__.return_value.bind.side_effect = OSError('bind failed')
+                with self.assertRaises((OSError, ValueError)):
+                    self.fixture.transport(None, self.directory, '', {})
+                backend.return_value.shutdown.assert_called_once()
+                backend.return_value.server_close.assert_called_once()
+                self.assertEqual(adapt.called, failure == 'adapt')
 
     def test_adapted_transport_rejects_public_listeners_and_implicit_host_routes(self):
         port = 48888

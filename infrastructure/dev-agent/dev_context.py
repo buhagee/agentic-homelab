@@ -87,14 +87,12 @@ RESERVED_PREFIXES = ('LD_', 'DYLD_', 'PYTHON', 'NODE_', 'NPM_', 'npm_', 'BASH_',
                      'OPENAI_', 'ANTHROPIC_', 'AWS_', 'AZURE_', 'GOOGLE_CLOUD_', 'GCLOUD_')
 
 
-def environment(account):
+def environment(account, *, persistent=False, tmux_client=False):
     names = sync_config.managed_env_names(account.home)
     env = account.environment()
     if any(name in RESERVED or name in env or name.startswith(RESERVED_PREFIXES) for name in names):
         raise ValueError('Shared MCP environment contains a reserved process/provider variable; use a dedicated MCP variable name.')
-    for name in names:
-        if name in os.environ:
-            env[name] = os.environ[name]
+    values = {}
     path = account.home / '.config/qacey-dev/mcp-env.json'
     info = private_path(account.home, path, optional=True)
     if info is not None:
@@ -104,7 +102,15 @@ def environment(account):
         if (not isinstance(values, dict) or set(values) - names
                 or any(not isinstance(value, str) or '\x00' in value for value in values.values())):
             raise ValueError('Private MCP environment contains undeclared names or invalid values.')
-        env.update(values)
+    if tmux_client:
+        missing = (names & os.environ.keys()) - values.keys()
+        if missing:
+            raise ValueError(f"Persistent Codex sessions require shell-exported MCP names in {path} "
+                             f"(mode 0600): {', '.join(sorted(missing))}")
+        return env
+    if not persistent:
+        env.update({name: os.environ[name] for name in names if name in os.environ})
+    env.update(values)
     return env
 
 

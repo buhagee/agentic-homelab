@@ -109,6 +109,44 @@ class LauncherTests(unittest.TestCase):
         self.assertEqual(argv, [str(self.account.codex), '-C', str(project)])
         self.assertEqual(executable, self.account.codex)
 
+    def test_persistent_public_launcher_requires_file_for_shell_exports(self):
+        project = self.project()
+        names = {'MCP_TOKEN', 'MCP_OPTIONAL'}
+        with patch.object(self.context.sync_config, 'managed_env_names', return_value=names), \
+                patch.dict(os.environ, {'MCP_TOKEN': 'synthetic-shell-value'}, clear=True):
+            real_run = subprocess.run
+            def git_only(argv, **kwargs):
+                self.assertEqual(argv[0], '/usr/bin/git', 'tmux called before shell-only MCP values were diagnosed')
+                return real_run(argv, **kwargs)
+
+            with patch.object(subprocess, 'run', side_effect=git_only) as run:
+                with self.assertRaisesRegex(ValueError, 'mcp-env.json.*MCP_TOKEN') as problem:
+                    self.launcher.main(['codex', str(project)])
+                self.assertFalse(any(call.args[0][0] == '/usr/bin/tmux' for call in run.call_args_list))
+            self.assertNotIn('synthetic-shell-value', str(problem.exception))
+            self.assertEqual(self.context.environment(self.account)['MCP_TOKEN'], 'synthetic-shell-value')
+            private = self.home / '.config/qacey-dev/mcp-env.json'
+            private.write_text(json.dumps({'MCP_TOKEN': 'synthetic-file-value'}))
+            private.chmod(0o600)
+
+            def run_client(argv, **kwargs):
+                if argv[0] == '/usr/bin/git':
+                    return real_run(argv, **kwargs)
+                self.assertEqual(argv[0], '/usr/bin/tmux')
+                for secret in ('synthetic-shell-value', 'synthetic-file-value'):
+                    self.assertNotIn(secret, repr(argv) + repr(kwargs))
+                return subprocess.CompletedProcess(argv, 0)
+
+            with patch.object(subprocess, 'run', side_effect=run_client):
+                self.assertEqual(self.launcher.main(['codex', str(project)]), 0)
+            with patch.dict(os.environ, {'MCP_OPTIONAL': 'stale-server-export'}), \
+                    patch.object(os, 'execve') as execute, patch.object(os, 'chdir'):
+                self.launcher.main(['_codex-run', str(project)])
+            _, argv, env = execute.call_args.args
+            self.assertEqual(env['MCP_TOKEN'], 'synthetic-file-value')
+            self.assertNotIn('MCP_OPTIONAL', env)
+            self.assertNotIn('synthetic-file-value', repr(argv) + self.output.getvalue())
+
     def test_mcp_environment_is_explicit_private_and_cannot_override_harness(self):
         secret = self.home / '.config/qacey-dev/mcp-env.json'
         for name in ('PATH', 'NODE_OPTIONS', 'LD_PRELOAD', 'BASH_ENV', 'OPENAI_API_KEY', 'OPENCODE_PORT', 'CODEX_HOME'):

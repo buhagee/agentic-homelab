@@ -1,6 +1,14 @@
 [Unit]
 Description=Private Unix bridge for the authenticated development gateway
 
+# This socket follows a normal service, after basic.target, rather than early sockets.target.
+DefaultDependencies=no
+Requires=sysinit.target
+After=sysinit.target qacey-openchamber.service
+BindsTo=qacey-openchamber.service
+Before=shutdown.target
+Conflicts=shutdown.target
+
 [Socket]
 ListenStream=/run/qacey-dev-proxy/backend.sock
 SocketUser=@USER@
@@ -10,4 +18,4 @@ DirectoryMode=0755
 RemoveOnStop=true
 
 [Install]
-WantedBy=sockets.target
+WantedBy=multi-user.target

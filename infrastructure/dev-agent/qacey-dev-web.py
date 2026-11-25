@@ -23,7 +23,7 @@ def run(command):
     return result.stdout
 
 
-def check(*, require_socket=False):
+def check(*, require_socket=False, verified_oracle_route=None):
     identity = web.development_record(HOST_ROOT)
     directory = HOST_ROOT / 'etc/qacey-dev/web'
     path = directory / 'installation.json'
@@ -34,6 +34,9 @@ def check(*, require_socket=False):
         raise ValueError('Gateway provisioning is incomplete or the development account changed.')
     web.validate_settings(record['settings'])
     web.verify_files(directory, record)
+    if require_socket and verified_oracle_route != record['files'][web.ORACLE_ROUTE]:
+        raise ValueError('Verify the installed Oracle route and edge access-log markers, then supply '
+                         '--verified-oracle-route with the verified fragment SHA-256.')
     web.secret_values(directory / 'oauth2.env', 'oauth')
     web.secret_values(directory.parent / 'openchamber.env', 'native')
     command, _ = web.compose_command(directory)
@@ -47,7 +50,7 @@ def check(*, require_socket=False):
                 or stat.S_IMODE(info.st_mode) != 0o600):
             raise ValueError('Start the private native proxy socket and verify its account and mode 0600 first.')
         # is-active with several units succeeds when any unit is active. Require each.
-        for unit in ('qacey-openchamber.service', 'qacey-codex-tmux.service'):
+        for unit in ('qacey-openchamber.service', 'qacey-dev-proxy.socket', 'qacey-codex-tmux.service'):
             run(['/usr/bin/systemctl', 'is-active', '--quiet', unit])
     return command
 
@@ -55,13 +58,17 @@ def check(*, require_socket=False):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument('action', choices=('check', 'start', 'stop', 'status'))
+    parser.add_argument('--verified-oracle-route', metavar='SHA256',
+                        help='For start: digest of the Oracle fragment verified on the edge using the runbook.')
     args = parser.parse_args(argv)
+    if args.verified_oracle_route is not None and args.action != 'start':
+        parser.error('--verified-oracle-route is used only with start.')
     if os.geteuid() != ROOT_UID: raise PermissionError('Gateway lifecycle commands require the operator root terminal.')
     web.ROOT_UID = ROOT_UID
     # Only root can open the provisioner's permanent private lock object.
     with web.gateway_lock(HOST_ROOT):
         if args.action in ('check', 'start'):
-            command = check(require_socket=args.action == 'start')
+            command = check(require_socket=args.action == 'start', verified_oracle_route=args.verified_oracle_route)
             if args.action == 'start': run([*command, 'up', '-d', '--force-recreate'])
             print('Gateway started; verify TLS, identity and mobile acceptance.' if args.action == 'start'
                   else 'Gateway configuration and private secret-file checks passed. No service was started.')

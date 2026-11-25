@@ -1,0 +1,18 @@
+# Install explicitly on the Oracle edge after choosing the development hostname.
+http:
+  routers:
+    qacey-dev-edge:
+      rule: "Host(`@HOSTNAME@`)"
+      entryPoints: [websecure]
+      priority: 150
+      tls:
+        certResolver: letsencrypt
+      middlewares: [secure-headers, qacey-dev-edge-marker]
+      service: home-server-svc
+      observability:
+        accessLogs: false
+  middlewares:
+    qacey-dev-edge-marker:
+      headers:
+        customResponseHeaders:
+          X-Qacey-Dev-Edge: "@HOSTNAME@"
