@@ -20,7 +20,8 @@ document defines the boundary.
 | Plugin files | UI | `/opt/data/plugins/` |
 | Plugin dependency environments | UI | `/opt/data/installs/` |
 | MCP OAuth tokens | UI | `/opt/data/mcp-tokens/` |
-| Skills | UI | Hermes skill volumes |
+| Skills | UI | `/opt/data/skills/` |
+| Tool HOME | UI | `/opt/data/home/` |
 | Provider keys | Git secrets | `secrets/.env` |
 | Integration API keys added by the UI | UI | `/opt/data/.env` |
 | Dashboard public URL | Git | Compose environment |
@@ -48,6 +49,96 @@ Provider-type plugin selections stored outside the `plugins` block
 (`memory.provider`, `context.engine`) are Git-owned today. Add them to the base
 config deliberately. General plugins, MCP servers, skills, and OAuth tokens do
 not need a Git change.
+
+## Runtime layout
+
+Everything the dashboard may preview must live under `HERMES_HOME=/opt/data`.
+
+```text
+/opt/data
+  config.yaml
+  .env
+  SOUL.md
+  sessions/
+  memories/
+  plugins/
+  mcp-tokens/
+  skills/
+    shared/          # SkillClaw shared library, read-only to the agent
+    justin/          # per-agent library
+  home/              # HOME for tools and MCP subprocesses
+```
+
+The agent container sets:
+
+```text
+HOME=/opt/data/home
+HERMES_HOME=/opt/data
+HERMES_WRITE_SAFE_ROOT=/opt/data
+```
+
+`HERMES_DASHBOARD_FILES_ROOT` stays unset. The managed root is then
+`/opt/data`, and `~/.hermes`, skills, plugin state, and chat files are all
+readable by the dashboard.
+
+The image keeps a compatibility symlink:
+
+```text
+/opt/hermes/home/.hermes -> /opt/data/home
+```
+
+That makes file links from older chats resolve inside the managed root. The
+symlink is read-only compatibility, not a writable path.
+
+Do not point `HERMES_DASHBOARD_FILES_ROOT` at `/` or `/opt`. That exposes
+`/opt/hermes`, the venv, and core source to the file API.
+
+### Migrating from the old split layout
+
+Old layout:
+
+```text
+/opt/data                         # Hermes state
+/opt/hermes/home/.hermes          # HOME state, outside managed root
+/opt/hermes/home/.hermes/skills   # skills, outside managed root
+```
+
+New layout:
+
+```text
+/opt/data                         # Hermes state
+/opt/data/home                    # HOME state
+/opt/data/skills                  # skills
+```
+
+Before recreating the containers:
+
+```bash
+# Inspect what the old home contains.
+find /mnt/ssd/qacey/hermes/justin/home -maxdepth 3 -type d | sort
+
+# If old home held skills, move them into the shared SkillClaw tree.
+# Do not leave a skills directory under the new HOME; Hermes won't scan it.
+# mv /mnt/ssd/qacey/hermes/justin/home/skills/* \
+#    /mnt/ssd/qacey/hermes/skills/justin/
+```
+
+The same host `justin/home` directory is reused. It is now mounted at
+`/opt/data/home` instead of `/opt/hermes/home/.hermes`. Tool dotfiles such as
+`.ssh`, `.gitconfig`, `.config`, and `.local` land in the correct place.
+
+Existing `/opt/data/skills` content is preserved. The SkillClaw mounts appear
+as `/opt/data/skills/shared` and `/opt/data/skills/justin`.
+
+Verify after recreate:
+
+```bash
+docker exec hermes-justin sh -lc \
+  'printf "HOME=%s\nHERMES_HOME=%s\n" "$HOME" "$HERMES_HOME"; ls -ld /opt/data/home /opt/data/skills'
+```
+
+Then click a chat file again. It should preview without the managed-boundary
+error.
 
 ## MCP policy
 
@@ -137,9 +228,11 @@ Justin's offsite backup includes:
 - `data/.env`
 - `data/plugins`
 - `data/mcp-tokens`
+- `data/skills`
 - `data/memories`
 - `data/profiles`
 - `data/google-workspace`
+- `home/` (tool HOME: git/ssh/npm/uv and MCP credentials)
 
 `data/installs` is not backed up by default. It is rebuildable and can be
 large. Back up plugin source and tokens instead.

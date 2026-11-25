@@ -23,6 +23,9 @@ See `docs/operations/hermes-ui-ownership.md` for the full contract.
 - Initializes the mnemo-postgres database
 - Loads `/.env` and overlays `/secrets/.env` when present
 
+Agent `HOME` is `/opt/data/home`. Skills are under `/opt/data/skills`. Both
+are inside the dashboard managed root.
+
 `services/agent/mcp-servers*.json` are **reference only**. Deploy never reads
 them. Re-add MCPs through the Hermes dashboard at
 `https://hermes.${QACEY_DOMAIN}` or `https://hermes-annique.${QACEY_DOMAIN}`.

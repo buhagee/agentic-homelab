@@ -60,7 +60,7 @@
     "command": "/opt/google-workspace-venv/bin/python",
     "args": ["-m", "google_workspace_mcp"],
     "env": {
-      "HOME": "/opt/hermes/home",
+      "HOME": "/opt/data/home",
       "PYTHONPATH": "/opt/hermes",
       "GOOGLE_WORKSPACE_AUTH_FILE": "/opt/data/google-workspace/auth.json",
       "GOOGLE_WORKSPACE_TIMEOUT_SECONDS": "60"

@@ -34,17 +34,17 @@ RUN apt-get update -qq \
  && apt-get install -y --no-install-recommends curl ca-certificates chromium \
  && rm -rf /var/lib/apt/lists/*
 
-# Ensure the runtime uid/gid can write HOME for Telegram locks and uv caches,
-# and stdio MCP process state. The container runs with a configurable uid but a
-# stable gid of 982 in this stack, so group-write on HOME is the critical bit.
+# Compatibility bridge for file links emitted before the layout migration.
+# The link resolves to /opt/data/home, which is inside the managed root.
 RUN mkdir -p /opt/hermes/home \
- && chown -R 999:982 /opt/hermes/home \
- && chmod 2775 /opt/hermes/home
+ && ln -s /opt/data/home /opt/hermes/home/.hermes
 
+# HOME lives on the data volume so tool dotfiles, MCP state, and skill CLIs
+# stay inside the dashboard managed root (/opt/data). start.sh creates it.
 COPY google_workspace_mcp /opt/hermes/google_workspace_mcp
 COPY sitecustomize.py /opt/hermes/sitecustomize.py
 
-ENV HOME=/opt/hermes/home
+ENV HOME=/opt/data/home
 ENV PYTHONPATH=/opt/hermes
 
 # Entrypoint script

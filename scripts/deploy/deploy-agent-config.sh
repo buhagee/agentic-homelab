@@ -34,7 +34,7 @@ HERMES_STATE_MERGE="${HERMES_STATE_MERGE:-$PLATFORM_DIR/scripts/lib/hermes_state
 JUSTIN_DATA="${JUSTIN_DATA:-$HERMES_BASE_DIR/justin/data}"
 ANNIQUE_DATA="${ANNIQUE_DATA:-$HERMES_BASE_DIR/annique/data}"
 
-# hermes home dirs (for ~/.hermes runtime files)
+# Tool HOME dirs (mounted at /opt/data/home, inside HERMES_HOME)
 JUSTIN_HOME="${JUSTIN_HOME:-$HERMES_BASE_DIR/justin/home}"
 ANNIQUE_HOME="${ANNIQUE_HOME:-$HERMES_BASE_DIR/annique/home}"
 
