@@ -11,6 +11,16 @@ set -euo pipefail
 # created group/world-readable when the host volume is shared.
 umask 077
 
+# HOME must stay inside HERMES_HOME (/opt/data) so the dashboard file browser
+# can read tool state and files emitted in chat.
+export HOME="${HOME:-/opt/data/home}"
+mkdir -p "$HOME"
+
+# Compatibility bridge for old chat links that used ~/.hermes/skills.
+if [[ ! -e "$HOME/skills" ]]; then
+	ln -s /opt/data/skills "$HOME/skills"
+fi
+
 LOCK_DIR="${HOME}/.local/state/hermes/gateway-locks"
 if [[ -d "$LOCK_DIR" ]]; then
 	find "$LOCK_DIR" -type d -exec chmod 700 {} +
