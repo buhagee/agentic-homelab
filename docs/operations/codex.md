@@ -8,6 +8,14 @@ platform deployment pipeline.
 The implementation and its boundaries are described in the
 [foundation design](../designs/2026-11-26-codex-foundation.md).
 
+## Recommended phone access
+
+Use the [shared Codex/OpenChamber HTTPS runbook](development.md) for the headless
+server. It reuses this foundation account and Codex login, adds OpenCode chat and
+a web terminal, and gives Codex sessions an independent tmux lifetime. Steps 1–4
+below remain the foundation onboarding. The remote-control pairing in step 5 is
+an optional experimental alternative and is not required by the HTTPS setup.
+
 ## Existing projects may be live
 
 The owner keeps projects under their `~/projects`. The deployment sources support
@@ -213,7 +221,7 @@ boundary. Its Codex safety hooks are advisory. The initial pilot deliberately
 leaves this optional curation as a reviewed onboarding task rather than silently
 installing the entire catalog.
 
-## 5. Activate and pair deliberately
+## 5. Optional experimental remote-control pairing
 
 After sign-in and a successful local task, return to the administrative account:
 

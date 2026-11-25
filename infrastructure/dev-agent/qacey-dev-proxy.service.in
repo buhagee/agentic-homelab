@@ -1,0 +1,19 @@
+[Unit]
+Description=Unix to loopback bridge for native OpenChamber
+After=qacey-openchamber.service
+
+[Service]
+Type=simple
+User=@USER@
+Group=@USER@
+ExecStart=/usr/lib/systemd/systemd-socket-proxyd 127.0.0.1:@PORT@
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true

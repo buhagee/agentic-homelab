@@ -24,12 +24,27 @@ def directory(stack, parent_fd, name):
     return fd
 
 
-def seed_file(parent_fd, name, content):
+def seed_file(parent_fd, name, content, shared_guidance=None):
     try:
         entry = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
     except FileNotFoundError:
         pass
     else:
+        if shared_guidance is not None and stat.S_ISLNK(entry.st_mode):
+            if (entry.st_uid != os.geteuid()
+                    or os.readlink(name, dir_fd=parent_fd) != str(shared_guidance)):
+                raise ValueError(f"Unexpected existing link at {name}")
+            # Only the exact shared instructions file is accepted. Do not follow
+            # a substituted directory/link or accept a different user's target.
+            if shared_guidance.resolve(strict=True) != shared_guidance:
+                raise ValueError("Shared guidance path contains a symlink.")
+            for path in (shared_guidance.parent.parent, shared_guidance.parent, shared_guidance):
+                info = path.lstat()
+                expected = stat.S_ISREG if path == shared_guidance else stat.S_ISDIR
+                if (not expected(info.st_mode) or info.st_uid != os.geteuid()
+                        or info.st_mode & 0o022 or (path == shared_guidance and info.st_nlink != 1)):
+                    raise ValueError("Unexpected shared guidance owner, type or permissions.")
+            return
         if entry.st_uid != os.geteuid() or not stat.S_ISREG(entry.st_mode):
             raise ValueError(f"Unexpected existing file at {name}")
         return
@@ -60,7 +75,8 @@ def main(home):
         config = (ASSETS / "config.toml.in").read_text().replace(
             "@PROJECTS@", json.dumps(str(home / "projects"), ensure_ascii=False))
         seed_file(state, "config.toml", config)
-        seed_file(state, "AGENTS.md", (ASSETS / "AGENTS.md.in").read_text())
+        seed_file(state, "AGENTS.md", (ASSETS / "AGENTS.md.in").read_text(),
+                  home / ".config/qacey-dev/AGENTS.md")
 
 
 if __name__ == "__main__":

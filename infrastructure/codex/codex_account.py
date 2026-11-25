@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import pwd
 import stat
+import subprocess
 from dataclasses import dataclass
 
 RECORD = Path("/etc/qacey-codex/installation.json")
@@ -31,6 +32,27 @@ class Account:
                    CODEX_HOME=str(self.home / ".codex"),
                    PATH=f"{self.bin_dir}:/usr/local/bin:/usr/bin:/bin")
         return env
+
+
+def checked_project(account, requested, env):
+    """Reject production paths and worktrees sharing Git metadata outside the dev home."""
+    root = account.home / "projects"
+    project = Path(requested).resolve(strict=True)
+    if root.resolve(strict=True) != root or root not in project.parents or not project.is_dir():
+        raise ValueError(f"Select a development checkout under {root}.")
+    result = subprocess.run(
+        ["/usr/bin/git", "-C", str(project), "rev-parse", "--path-format=absolute",
+         "--show-toplevel", "--absolute-git-dir", "--git-common-dir"],
+        env=env, cwd=account.home, capture_output=True, text=True,
+    )
+    paths = result.stdout.splitlines()
+    if result.returncode or len(paths) != 3:
+        raise ValueError(f"Expected a Git working tree at {project}.")
+    for name in paths:
+        path = Path(name)
+        if not path.is_absolute() or root not in path.resolve(strict=True).parents:
+            raise ValueError(f"Working tree and Git metadata must be under {root}.")
+    return project
 
 
 def current_account():

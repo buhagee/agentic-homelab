@@ -8,7 +8,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import install_runtime
-from codex_account import current_account
+from codex_account import current_account, checked_project
 
 
 COMMANDS = {
@@ -20,26 +20,6 @@ COMMANDS = {
     "pair": ["remote-control", "pair"],
     "status": ["app-server", "daemon", "version"],
 }
-
-
-def checked_project(account, requested, env):
-    root = account.home / "projects"
-    project = Path(requested).resolve(strict=True)
-    if root.resolve(strict=True) != root or root not in project.parents or not project.is_dir():
-        raise ValueError(f"Select a development checkout under {root}.")
-    result = subprocess.run(
-        ["/usr/bin/git", "-C", str(project), "rev-parse", "--path-format=absolute",
-         "--show-toplevel", "--absolute-git-dir", "--git-common-dir"],
-        env=env, cwd=account.home, capture_output=True, text=True,
-    )
-    paths = result.stdout.splitlines()
-    if result.returncode or len(paths) != 3:
-        raise ValueError(f"Expected a Git working tree at {project}.")
-    for name in paths:
-        path = Path(name)
-        if not path.is_absolute() or root not in path.resolve(strict=True).parents:
-            raise ValueError(f"Working tree and Git metadata must be under {root}.")
-    return project
 
 
 def main(argv=None):

@@ -64,16 +64,18 @@ bash scripts/start.sh
 Real secrets belong in `secrets/.env`. Traefik and OAuth templates are rendered
 from `secrets/.env` at start time; rendered files are gitignored.
 
-## Optional native Codex development
+## Optional shared native development
 
-[Codex on the home server](docs/operations/codex.md) adds a dedicated development
-account, independent project clones, a pinned runtime installer and an opt-in
-remote-access unit. Start with the installer's dry-run; installation, sign-in and
-activation are separate steps. Existing projects under the operator's home can be
-live deployment checkouts and are not granted to the new account.
+[Codex and OpenChamber on the home server](docs/operations/development.md) adds
+OpenCode chat and a Codex terminal behind authenticated HTTPS, using one dedicated
+development account and independent clones. Portable skills, guidance and common
+MCP definitions are shared; each harness keeps its own login, plugins and history.
+The [Codex foundation](docs/operations/codex.md) supplies account/runtime onboarding.
 
-The current Compose services stay in place during this pilot. Merges to `main`
-still trigger the existing deployment pipeline; Codex setup is never invoked by it.
+All setup and activation are opt-in. Existing operator checkouts, Hermes and the
+Docker OpenCode stack remain unchanged. Merging may still trigger the platform's
+existing deployment pipeline; it does not invoke native setup or restart these
+coding services.
 
 ## Security posture
 

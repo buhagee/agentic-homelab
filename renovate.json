@@ -37,7 +37,8 @@
         "searxng/searxng",
         "unclecode/crawl4ai",
         "ghcr.io/analogj/scrutiny",
-        "quay.io/oauth2-proxy/oauth2-proxy"
+        "quay.io/oauth2-proxy/oauth2-proxy",
+        "caddy"
       ],
       "groupName": "stateless patch updates",
       "addLabels": [
@@ -58,7 +59,8 @@
         "searxng/searxng",
         "unclecode/crawl4ai",
         "ghcr.io/analogj/scrutiny",
-        "quay.io/oauth2-proxy/oauth2-proxy"
+        "quay.io/oauth2-proxy/oauth2-proxy",
+        "caddy"
       ],
       "groupName": "stateless minor updates",
       "addLabels": [

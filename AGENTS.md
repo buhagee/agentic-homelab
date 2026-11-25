@@ -12,9 +12,10 @@ isolated tests is not permission to deploy, restart services, or read credential
 - Always verify the original cited source. An index hit is not proof of causal
   dependency; read the source before relying on a relationship.
 
-## Native Codex development
+## Shared native development
 
-The optional native setup is documented in `docs/operations/codex.md`. Use its
+The optional Codex/OpenChamber setup is documented in `docs/operations/development.md`
+and the underlying foundation in `docs/operations/codex.md`. Use their shared
 dedicated account and independent development clones. The operator's existing
 `~/projects` may contain live deployment checkouts: do not grant recursive write
 access, change their ownership, or share their Git metadata with a coding worktree.
@@ -39,3 +40,12 @@ Run production smoke/deployment scripts only with explicit approval and the
 required host environment. For the existing OpenCode stack, use the approved Docker controller for service
 operations, with approval for every call. Do not mount a Docker socket into
 OpenCode or bypass the controller's host-approved snapshot.
+
+## Code Review Rules
+
+- Identify production deployment, service restart and destructive side effects.
+  Setup/tests must remain isolated or require explicit operator activation.
+- Preserve account, authentication, network and secret boundaries. Reject root or
+  Docker grants, public backend bypasses and credentials in source or logs.
+- Preserve user configuration, credentials, data and stopped/disabled intent
+  through upgrades and migrations. Require evidence for changed runtime interfaces.

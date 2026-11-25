@@ -1,0 +1,34 @@
+{
+  admin off
+  auto_https off
+  # HTTP error fields can contain terminal-token URLs; retain non-request logs.
+  log {
+    exclude http.log.error
+  }
+}
+:8080 {
+  @wrongHost not host @HOSTNAME@
+  respond @wrongHost 421
+  @wrongOrigin {
+    header Origin *
+    not header Origin https://@HOSTNAME@
+  }
+  respond @wrongOrigin 403
+  @noWsOrigin {
+    header_regexp Upgrade (?i)websocket
+    not header Origin *
+  }
+  respond @noWsOrigin 403
+  @noMutationOrigin {
+    not method GET HEAD OPTIONS
+    not header Origin *
+  }
+  respond @noMutationOrigin 403
+  reverse_proxy unix//run/qacey-dev-proxy/backend.sock {
+    flush_interval -1
+    header_up Host @HOSTNAME@
+    header_up X-Forwarded-Host @HOSTNAME@
+    header_up X-Forwarded-Proto https
+    header_up -Forwarded
+  }
+}
