@@ -23,8 +23,9 @@ See `docs/operations/hermes-ui-ownership.md` for the full contract.
 - Deploys Google Workspace auth material from platform secrets
 - Initializes the mnemo-postgres database
 
-Agent `HOME` is `/opt/data/home`. Skills are under `/opt/data/skills`. Both
-are inside the dashboard managed root.
+Agent `HOME` is `/opt/data/home`. Skills are under `/opt/data/skills`. The
+default working directory is `/opt/data/workspace`. All are inside the
+dashboard managed root.
 
 MCP manifests are archived under `docs/operations/hermes-mcp-reference/`.
 They are **reference only**. Deploy never reads them. Add MCPs through the
