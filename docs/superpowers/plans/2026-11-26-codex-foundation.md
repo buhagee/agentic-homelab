@@ -60,4 +60,4 @@
 - [x] Describe explicit native Superpowers/Gstack setup, avoiding duplicate/global workflow installs and the OpenCode-specific installer.
 - [x] Run `bash scripts/testing/run-all.sh`, the existing public hygiene/secret checks and `git diff --check` on the integrated tree.
 - [x] Obtain independent whole-branch review and fix material findings.
-- [ ] Publish the branch and create a review PR against `main`; inspect CI and leave the PR unmerged.
+- [x] Publish the branch and create a review PR against `main`; inspect CI and leave the PR unmerged.
