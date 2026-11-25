@@ -8,7 +8,6 @@ browser interface does not provide graphical desktop Computer Use.
 This is an **opt-in installation**. Merging publishes the files through the
 existing platform pipeline; it does not install native runtimes, apply user
 configuration, start services or remove Hermes/the existing Docker OpenCode.
-The [design](../designs/2026-11-26-shared-development.md) records the boundaries.
 
 ## What is shared
 

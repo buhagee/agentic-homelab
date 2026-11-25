@@ -52,6 +52,10 @@ __pycache__/
 infrastructure/certs/
 scripts/immich-bulk-upload.env
 
+# Temporary agent plans, design drafts and review notes
+/.superpowers/
+/docs/superpowers/
+
 # ── U-16: Skills managed via WebUI, not in repo ──────────────────────────
 services/agent/skills/*
 !services/agent/skills/.gitkeep

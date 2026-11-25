@@ -41,6 +41,14 @@ required host environment. For the existing OpenCode stack, use the approved Doc
 operations, with approval for every call. Do not mount a Docker socket into
 OpenCode or bypass the controller's host-approved snapshot.
 
+## Documentation
+
+Keep short-lived implementation plans, design drafts and review notes in the
+ignored `.superpowers/` or `docs/superpowers/` directories; do not force-add them.
+Commit durable setup and maintenance instructions, architecture decisions and
+long-lived roadmaps. Remove completed task plans instead of retaining them as
+operational documentation.
+
 ## Code Review Rules
 
 - Identify production deployment, service restart and destructive side effects.

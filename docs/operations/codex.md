@@ -5,9 +5,6 @@ private state, a pinned runtime installer and a disabled remote-access unit. It
 does not replace the running OpenCode/Hermes stack or install itself through the
 platform deployment pipeline.
 
-The implementation and its boundaries are described in the
-[foundation design](../designs/2026-11-26-codex-foundation.md).
-
 ## Recommended phone access
 
 Use the [shared Codex/OpenChamber HTTPS runbook](development.md) for the headless
