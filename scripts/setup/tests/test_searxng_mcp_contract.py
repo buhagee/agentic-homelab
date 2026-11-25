@@ -75,12 +75,16 @@ class SearxngMcpContractTests(unittest.TestCase):
         self.assertIn("- json", settings)
         self.assertIn("allow_private_urls: false", agent_config)
 
-    def test_deployment_renderer_uses_shared_manifest_for_both_agents(self):
-        self.assertIn('if .value.url then', self.deploy)
-        self.assertIn('transport: \\(.value.transport // "streamable_http")', self.deploy)
-        self.assertGreaterEqual(self.deploy.count('"$HERMES_SRC/mcp-servers.shared.json"'), 3)
-        self.assertIn('instance=justin write_config_yaml', self.deploy)
-        self.assertIn('instance=annique write_config_yaml', self.deploy)
+    def test_deployment_preserves_ui_owned_blocks_for_both_agents(self):
+        self.assertIn("hermes_state_merge.py", self.deploy)
+        self.assertIn('"$HERMES_STATE_MERGE" config', self.deploy)
+        self.assertIn('"$HERMES_STATE_MERGE" env', self.deploy)
+        self.assertIn('write_config_yaml "$JUSTIN_DATA/config.yaml"', self.deploy)
+        self.assertIn('write_config_yaml "$ANNIQUE_DATA/config.yaml"', self.deploy)
+        self.assertIn("config.yaml.pre-deploy", self.deploy)
+        self.assertNotIn('"$HERMES_SRC/mcp-servers.shared.json"', self.deploy)
+        self.assertNotIn('"$HERMES_SRC/mcp-servers.justin.json"', self.deploy)
+        self.assertNotIn('"$HERMES_SRC/mcp-servers.annique.json"', self.deploy)
 
     def test_negative_guards_reject_public_or_stdio_shape(self):
         service = self.compose.split("  mcp-searxng:\n", 1)[1].split(
