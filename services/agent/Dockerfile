@@ -37,6 +37,7 @@ RUN apt-get update -qq \
 # Compatibility bridge for file links emitted before the layout migration.
 # The link resolves to /opt/data/home, which is inside the managed root.
 RUN mkdir -p /opt/hermes/home \
+ && rm -rf /opt/hermes/home/.hermes \
  && ln -s /opt/data/home /opt/hermes/home/.hermes
 
 # HOME lives on the data volume so tool dotfiles, MCP state, and skill CLIs
