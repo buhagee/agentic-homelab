@@ -13,10 +13,10 @@ class HermesUiOwnershipContractTests(unittest.TestCase):
         text = DOC.read_text(encoding="utf-8")
         self.assertIn("**UI owns:** MCP servers, plugins, skills, OAuth tokens", text)
         self.assertIn(
-            "**Git owns:** base config, images, networks, routes, personas, provider keys",
+            "**Git owns:** base config seeds, images, networks, routes, personas, provider keys",
             text,
         )
-        self.assertIn("**Deploy merges. It never overwrites UI-owned state.**", text)
+        self.assertIn("**Deploy seeds. It never overwrites UI-owned state.**", text)
         self.assertIn("mcp_servers", text)
         self.assertIn("plugins", text)
         self.assertIn("reference only", text)
@@ -29,9 +29,11 @@ class HermesUiOwnershipContractTests(unittest.TestCase):
         self.assertIn("reference only", text)
         self.assertNotIn("Merges `config.shared.yaml` + per-user MCP JSON", text)
 
-    def test_base_config_marks_ui_owned_blocks(self):
+    def test_base_config_marks_seed_only_ownership(self):
         text = CONFIG.read_text(encoding="utf-8")
-        self.assertIn("UI-owned", text)
+        self.assertIn("Git-owned config seed", text)
+        self.assertIn("Hermes UI owns", text)
+        self.assertIn("Deploy never overwrites", text)
         self.assertIn("mcp_servers", text)
         self.assertIn("plugins", text)
 

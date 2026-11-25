@@ -2,19 +2,22 @@
 
 **Status:** active from 2026-11-25.
 
-Hermes has two writers only because each one owns a different state. This
-document defines the boundary.
+Hermes has one live writer per state. This document defines the boundary.
 
 ## Ownership
 
-- **UI owns:** MCP servers, plugins, skills, OAuth tokens.
-- **Git owns:** base config, images, networks, routes, personas, provider keys.
-- **Deploy merges. It never overwrites UI-owned state.**
+- **UI owns:** MCP servers, plugins, skills, OAuth tokens, model/provider
+  settings, API keys, and the live `config.yaml`, `.env`, and `SOUL.md`.
+- **Git owns:** base config seeds, images, networks, routes, personas, provider keys for non-Hermes services.
+- **Deploy seeds. It never overwrites UI-owned state.**
 
 | State | Owner | Location |
 |---|---|---|
-| Base config | Git | `services/agent/config.shared.yaml` |
-| Per-instance base overlay | Git | `services/agent/config.<instance>.yaml` |
+| Config seed | Git | `services/agent/config.shared.yaml` |
+| Per-instance seed overlay | Git | `services/agent/config.<instance>.yaml` |
+| Live config | UI | `/opt/data/config.yaml` |
+| Live env / provider keys | UI | `/opt/data/.env` |
+| Live persona | UI | `/opt/data/SOUL.md` |
 | `mcp_servers` | UI | `/opt/data/config.yaml` |
 | `plugins` | UI | `/opt/data/config.yaml` |
 | Plugin files | UI | `/opt/data/plugins/` |
@@ -22,33 +25,54 @@ document defines the boundary.
 | MCP OAuth tokens | UI | `/opt/data/mcp-tokens/` |
 | Skills | UI | `/opt/data/skills/` |
 | Tool HOME | UI | `/opt/data/home/` |
-| Provider keys | Git secrets | `secrets/.env` |
-| Integration API keys added by the UI | UI | `/opt/data/.env` |
 | Dashboard public URL | Git | Compose environment |
 
-No key is owned by both sides.
+No live key is owned by both sides.
 
 ## Deploy behavior
 
 `scripts/deploy/deploy-agent-config.sh`:
 
-1. Renders the Git-owned base config and per-instance overlay.
-2. Backs up the live config as `config.yaml.pre-deploy`.
-3. Merges only `mcp_servers` and `plugins` from the live config.
-4. Writes the result atomically with mode `600`.
-5. Merges repo-managed keys into `.env`; UI keys and comments stay.
-6. Backs up the live env as `.env.pre-deploy`.
+1. Ensures data, home, and skill directories exist.
+2. Seeds `config.yaml` from `config.shared.yaml` + overlay **only when the live
+   file is missing**.
+3. Seeds `.env` from the platform environment **only when the live file is
+   missing**.
+4. Seeds `SOUL.md` from the Git persona **only when the live file is missing**.
+5. Writes Google Workspace auth material from platform secrets.
+6. Initializes the mnemo databases and deploys operational scripts.
 
-The base config must not contain `mcp_servers` or `plugins`. Deploy fails
-loudly if either key appears there.
+Existing `config.yaml`, `.env`, and `SOUL.md` are never replaced.
 
-Dashboard Config page edits to Git-owned keys are expected to be overwritten
-on the next deploy. Use the UI for integration state, Git for everything else.
+Deploy still normalizes skill directory permissions and removes nested `.git`
+metadata under the skill volumes. It does not change skill content.
 
-Provider-type plugin selections stored outside the `plugins` block
-(`memory.provider`, `context.engine`) are Git-owned today. Add them to the base
-config deliberately. General plugins, MCP servers, skills, and OAuth tokens do
-not need a Git change.
+That means the dashboard Config page owns:
+
+- default model, provider, fallback
+- vision and image generation
+- security and approvals
+- `mcp_servers`
+- `plugins`
+- `memory.provider` and `context.engine`
+
+The dashboard API Keys page owns provider keys in `/opt/data/.env`.
+
+## Seed files
+
+The seed files are bootstrap-only:
+
+```text
+services/agent/config.shared.yaml
+services/agent/config.justin.yaml
+services/agent/config.annique.yaml
+services/agent/persona.justin.md
+services/agent/persona.annique.md
+```
+
+They matter on a fresh data volume. They are not applied to an existing
+install. To reset live config from the seed, remove the live file deliberately
+while the container is stopped, then run deploy.
 
 ## Runtime layout
 
@@ -144,14 +168,11 @@ error.
 ## MCP policy
 
 - Live MCP state is UI-owned.
-- `services/agent/mcp-servers*.json` are **reference only**. Deploy never reads
-  them.
-- Keep a small Git seed list only for platform-internal MCPs whose URL and
-  credentials are part of the platform: SearXNG, Crawl4AI, Paperless,
-  academic-papers, Google Workspace. Use it to rebuild a host, not to drive
-  every deploy.
-- External and OAuth MCPs belong in the UI only. Examples: Linear, Sentry,
-  Notion, Atlassian, Figma.
+- Manifests are archived under `docs/operations/hermes-mcp-reference/`. They
+  are **reference only**. Deploy never reads them.
+- Keep the archive only for migration and disaster-recovery reference.
+- External and OAuth MCPs belong in the UI. Examples: Linear, Sentry, Notion,
+  Atlassian, Figma.
 - The agent may propose an MCP. The agent must not silently add, enable, or
   replace one. A human approves it in the dashboard.
 - Prefer remote HTTP MCP + OAuth over stdio. Set `auth: oauth` for OAuth
@@ -191,35 +212,32 @@ redirect URL.
 
 ## Migration order
 
-Back up before the first merge deploy:
+Back up before the first seed-only deploy:
 
 ```bash
 cp -p /mnt/ssd/qacey/hermes/justin/data/config.yaml \
   /mnt/ssd/qacey/hermes/justin/data/config.yaml.pre-ui-ownership
 cp -p /mnt/ssd/qacey/hermes/justin/data/.env \
   /mnt/ssd/qacey/hermes/justin/data/.env.pre-ui-ownership
+cp -p /mnt/ssd/qacey/hermes/justin/data/SOUL.md \
+  /mnt/ssd/qacey/hermes/justin/data/SOUL.md.pre-ui-ownership
 ```
 
 Then:
 
-1. Deploy the merge version.
-2. Verify existing MCPs and plugins are still listed inside the container:
-   `hermes mcp list` and `hermes plugins list`.
-3. Re-add or repair MCPs in the UI.
-4. Test each server, enable it, and restart the gateway.
-5. Confirm a second deploy leaves the UI state unchanged.
+1. Deploy the seed-only version.
+2. Verify existing MCPs, plugins, model, and keys are still present:
+   `hermes mcp list`, `hermes plugins list`, `hermes config get model`.
+3. Change the model or a key in the UI.
+4. Deploy again.
+5. Confirm the UI change survived.
 
-Do not re-add every MCP at once. Add one, test, then add the next.
+Deploy must be a no-op for an initialized install.
 
 ## Rollback
 
-The deploy keeps one previous file per agent:
-
-- `config.yaml.pre-deploy`
-- `.env.pre-deploy`
-
-To roll back a bad merge, stop the container, copy the `.pre-deploy` file back,
-and start the container. Then revert the deploy change in Git.
+There is no live `.pre-deploy` copy anymore. Use the manual pre-migration
+backups above, or restore the latest `/opt/data` backup.
 
 ## Backup
 
@@ -227,6 +245,7 @@ Justin's offsite backup includes:
 
 - `data/config.yaml`
 - `data/.env`
+- `data/SOUL.md`
 - `data/plugins`
 - `data/mcp-tokens`
 - `data/skills`
@@ -240,4 +259,5 @@ large. Back up plugin source and tokens instead.
 
 Annique's whole `data` directory is already in the backup set.
 
-Test a restore before relying on it.
+Backups are the recovery path now that Git no longer owns live config. Test a
+restore before relying on it.

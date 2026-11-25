@@ -2,13 +2,18 @@
 # =============================================================================
 # deploy-agent-config.sh — Deploy Hermes Agent config to host volumes
 # =============================================================================
-# Merges services/agent/config.shared.yaml + live Hermes UI state into the
-# final config.yaml for each instance (HERMES_HOME=/opt/data).
-# Git owns the base config. The UI owns mcp_servers, plugins, skills, and
-# OAuth tokens. This script merges those live blocks back in.
-# services/agent/mcp-servers*.json are migration references only, never applied.
+# Seeds Hermes config.yaml, .env, and SOUL.md only when they are absent.
+# After seeding, the Hermes UI owns all live agent configuration:
+#   - model/provider and API keys
+#   - mcp_servers
+#   - plugins
+#   - skills
+#   - OAuth tokens
+#
+# Deploy never overwrites an existing config.yaml, .env, or SOUL.md.
+# MCP manifests are archived under docs/operations/hermes-mcp-reference/.
 # Variables in config.shared.yaml (e.g. ${HERMES_MODEL}) are substituted from
-# .env plus the private secrets/.env overlay at deploy time.
+# .env plus the private secrets/.env overlay at seed time.
 #
 # Usage:
 #   bash scripts/deploy-agent-config.sh
@@ -28,7 +33,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLATFORM_DIR="${PLATFORM_DIR:-$(dirname "$(dirname "$SCRIPT_DIR")")}"
 HERMES_SRC="${HERMES_SRC:-$PLATFORM_DIR/services/agent}"
 HERMES_BASE_DIR="${HERMES_BASE_DIR:-/mnt/ssd/qacey/hermes}"
-HERMES_STATE_MERGE="${HERMES_STATE_MERGE:-$PLATFORM_DIR/scripts/lib/hermes_state_merge.py}"
 
 # data dirs (HERMES_HOME=/opt/data in base image — config.yaml lives here)
 JUSTIN_DATA="${JUSTIN_DATA:-$HERMES_BASE_DIR/justin/data}"
@@ -116,7 +120,7 @@ harden_runtime_permissions() {
 
   for data_dir in "$JUSTIN_DATA" "$ANNIQUE_DATA"; do
     for path in \
-      config.yaml config.yaml.pre-deploy .env .env.pre-deploy SOUL.md state.db kanban.db response_store.db \
+      config.yaml .env SOUL.md state.db kanban.db response_store.db \
       verification_evidence.db auth.json mcp-servers.json \
       gateway_state.json channel_directory.json; do
       [[ -f "$data_dir/$path" ]] && chmod 600 "$data_dir/$path"
@@ -149,8 +153,7 @@ for f in \
   [[ -f "$f" ]] || die "Missing source file: $f"
 done
 
-command -v python3 >/dev/null 2>&1 || die "python3 is required for Hermes config merge"
-[[ -f "$HERMES_STATE_MERGE" ]] || die "Missing merge helper: $HERMES_STATE_MERGE"
+command -v envsubst >/dev/null 2>&1 || die "envsubst is required for Hermes config seeding"
 
 # ── Load env files for variable substitution ────────────────────────────────
 ENV_FILE="$PLATFORM_DIR/.env"
@@ -179,14 +182,19 @@ success "Directories ready"
 HERMES_UID="${HERMES_UID:-$(id -u hermes 2>/dev/null || echo 999)}"
 HERMES_GID="${HERMES_GID:-$(id -g hermes 2>/dev/null || echo 982)}"
 
-# ── Helper: render Git-owned base config and preserve UI-owned blocks ───────
-# Usage: write_config_yaml <dest>
-write_config_yaml() {
+# ── Helper: seed Git-owned config only when live config is absent ───────────
+# Usage: instance=<name> seed_config_yaml <dest>
+seed_config_yaml() {
   local dest="$1"
   local overlay="$HERMES_SRC/config.${instance:-shared}.yaml"
   local tmp_yaml
-  tmp_yaml="$(mktemp)"
 
+  if [[ -f "$dest" ]]; then
+    info "${instance^}: config.yaml exists; leaving UI-owned config unchanged"
+    return 0
+  fi
+
+  tmp_yaml="$(mktemp "${dest}.XXXXXX")"
   HERMES_TERMINAL_BACKEND="local"
   HERMES_TERMINAL_IMAGE=""
   export HERMES_TERMINAL_BACKEND HERMES_TERMINAL_IMAGE
@@ -196,22 +204,11 @@ write_config_yaml() {
     envsubst < "$overlay" >> "$tmp_yaml"
   fi
 
-  # Validate only the Git-owned base. UI-owned MCP entries may reference
-  # variables that live only in the runtime .env and are not deploy inputs.
   warn_unresolved_runtime_references "$tmp_yaml"
-
-  if [[ -f "$dest" ]]; then
-    cp -p "$dest" "${dest}.pre-deploy"
-    chmod 600 "${dest}.pre-deploy"
-  fi
-
-  python3 "$HERMES_STATE_MERGE" config \
-    --base "$tmp_yaml" \
-    --live "$dest" \
-    --output "$dest"
-  chmod 600 "$dest"
-
-  rm -f "$tmp_yaml"
+  assert_no_embedded_secrets "$tmp_yaml"
+  chmod 600 "$tmp_yaml"
+  mv "$tmp_yaml" "$dest"
+  success "${instance^}: config.yaml seeded (UI owns future changes)"
 }
 
 assert_no_embedded_secrets() {
@@ -247,63 +244,60 @@ warn_unresolved_runtime_references() {
   fi
 }
 
-# ── Generate and deploy config.yaml ─────────────────────────────────────────
-info "Generating config.yaml for Justin..."
-instance=justin write_config_yaml "$JUSTIN_DATA/config.yaml"
-assert_no_embedded_secrets "$JUSTIN_DATA/config.yaml"
-success "Justin: config.yaml written (UI-owned blocks preserved)"
+# ── Seed config.yaml only when missing ──────────────────────────────────────
+info "Seeding config.yaml for Justin if missing..."
+instance=justin seed_config_yaml "$JUSTIN_DATA/config.yaml"
 
-info "Generating config.yaml for Annique..."
-instance=annique write_config_yaml "$ANNIQUE_DATA/config.yaml"
-assert_no_embedded_secrets "$ANNIQUE_DATA/config.yaml"
-success "Annique: config.yaml written (UI-owned blocks preserved)"
+info "Seeding config.yaml for Annique if missing..."
+instance=annique seed_config_yaml "$ANNIQUE_DATA/config.yaml"
 
-# ── Deploy persona files (SOUL.md) ───────────────────────────────────────────
-info "Deploying SOUL.md..."
-cp "$HERMES_SRC/persona.justin.md" "$JUSTIN_DATA/SOUL.md"
-chmod 600 "$JUSTIN_DATA/SOUL.md"
-success "Justin: SOUL.md deployed"
-cp "$HERMES_SRC/persona.annique.md" "$ANNIQUE_DATA/SOUL.md"
-chmod 600 "$ANNIQUE_DATA/SOUL.md"
-success "Annique: SOUL.md deployed"
-
-# ── Deploy provider API keys to runtime .env files ───────────────────────────
-# Each Hermes runtime reads HERMES_HOME/.env for provider keys (separate from
-# the rendered config.yaml). Keep OpenRouter mirrored into OPENAI_API_KEY so
-# auxiliary vision calls continue to use the OpenAI-compatible backend even when
-# the main text provider switches to opencode-go.
-#
-# The merge updates only these repo-managed keys. UI-added MCP/plugin keys and
-# comments are preserved.
-write_runtime_env() {
-  local dest="$1"
-
-  OPENAI_API_KEY="${OPENROUTER_API_KEY:-}"
-  export OPENAI_API_KEY
+# ── Seed persona files (SOUL.md) only when missing ──────────────────────────
+seed_soul() {
+  local dest="$1" src="$2" label="$3"
 
   if [[ -f "$dest" ]]; then
-    cp -p "$dest" "${dest}.pre-deploy"
-    chmod 600 "${dest}.pre-deploy"
+    info "${label}: SOUL.md exists; leaving UI-owned persona unchanged"
+    return 0
   fi
-
-  python3 "$HERMES_STATE_MERGE" env \
-    --existing "$dest" \
-    --output "$dest" \
-    --managed-key OPENCODE_GO_API_KEY \
-    --managed-key OPENCODE_GO_BASE_URL \
-    --managed-key OPENROUTER_API_KEY \
-    --managed-key OPENAI_API_KEY \
-    --managed-key HERMES_IMAGE_GEN_MODEL \
-    --managed-key SKILLCLAW_MODEL \
-    --managed-key HA_LONG_LIVED_TOKEN
+  cp "$src" "$dest"
   chmod 600 "$dest"
+  success "${label}: SOUL.md seeded (UI owns future changes)"
 }
 
-info "Writing provider keys to runtime .env files..."
-write_runtime_env "$JUSTIN_DATA/.env"
-success "Justin: runtime .env merged (provider keys; UI keys preserved)"
-write_runtime_env "$ANNIQUE_DATA/.env"
-success "Annique: runtime .env merged (provider keys; UI keys preserved)"
+info "Seeding SOUL.md if missing..."
+seed_soul "$JUSTIN_DATA/SOUL.md" "$HERMES_SRC/persona.justin.md" "Justin"
+seed_soul "$ANNIQUE_DATA/SOUL.md" "$HERMES_SRC/persona.annique.md" "Annique"
+
+# ── Seed runtime .env only when missing ─────────────────────────────────────
+# Hermes reads HERMES_HOME/.env for provider keys. After the first seed, the
+# dashboard API Keys page owns this file.
+seed_runtime_env() {
+  local dest="$1"
+  local tmp_env
+
+  if [[ -f "$dest" ]]; then
+    info ".env exists; leaving UI-owned env unchanged"
+    return 0
+  fi
+
+  tmp_env="$(mktemp "${dest}.XXXXXX")"
+  cat > "$tmp_env" <<ENVEOF
+OPENCODE_GO_API_KEY=${OPENCODE_GO_API_KEY:-}
+OPENCODE_GO_BASE_URL=${OPENCODE_GO_BASE_URL:-}
+OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+OPENAI_API_KEY=${OPENROUTER_API_KEY:-}
+HERMES_IMAGE_GEN_MODEL=${HERMES_IMAGE_GEN_MODEL:-}
+SKILLCLAW_MODEL=${SKILLCLAW_MODEL:-}
+HA_LONG_LIVED_TOKEN=${HA_LONG_LIVED_TOKEN:-}
+ENVEOF
+  chmod 600 "$tmp_env"
+  mv "$tmp_env" "$dest"
+  success "runtime .env seeded (UI owns future changes)"
+}
+
+info "Seeding runtime .env if missing..."
+seed_runtime_env "$JUSTIN_DATA/.env"
+seed_runtime_env "$ANNIQUE_DATA/.env"
 
 info "Writing Google Workspace auth material..."
 write_google_workspace_auth_file "$JUSTIN_DATA" "${GOOGLE_WORKSPACE_REFRESH_TOKEN_JUSTIN:-}" "Justin"
@@ -372,7 +366,7 @@ sudo find "$SKILLS_DIR" -type f -perm /111 -exec chmod 750 {} +
 success "Skill directories ready (manage via WebUI)"
 
 # ── U-09: Deploy Justin-only scripts ─────────────────────────────────────────
-# Scripts live at ~/.hermes/scripts/ (HERMES_HOME/.hermes/scripts/) inside the container.
+# Scripts live at /opt/data/scripts inside the container.
 # Keep scripts group-readable/executable for the Hermes runtime, never world-readable.
 JUSTIN_SCRIPTS_DIR="$JUSTIN_DATA/scripts"
 if [[ -d "$HERMES_SRC/scripts" ]]; then
@@ -398,7 +392,8 @@ if [[ "${PRUNE_SKILL_GIT_METADATA:-1}" == "1" ]]; then
 fi
 
 echo ""
-info "Done. Restart containers to pick up the new config:"
+info "Done. Live config, env, and persona were left untouched if they existed."
+info "Restart containers only when a seed or operational change requires it:"
 info "  bash scripts/start.sh"
-info "Or to reload MCP without restart, ask Hermes: /reload-mcp"
+info "MCP changes are managed in the Hermes UI; use /reload-mcp when asked."
 

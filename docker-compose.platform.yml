@@ -516,10 +516,6 @@ services:
       - mnemo-postgres
     environment:
       GATEWAY_ALLOW_ALL_USERS: "false"
-      OPENCODE_GO_API_KEY: ${OPENCODE_GO_API_KEY}
-      OPENCODE_GO_BASE_URL: ${OPENCODE_GO_BASE_URL}
-      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
-      OPENAI_API_KEY: ${OPENROUTER_API_KEY}
       API_SERVER_ENABLED: "true"
       API_SERVER_KEY: ${HERMES_API_KEY_JUSTIN}
       # API binds only to hermes-peer; no host port or shared-network listener.
@@ -614,10 +610,6 @@ services:
       - mnemo-postgres
     environment:
       GATEWAY_ALLOW_ALL_USERS: "false"
-      OPENCODE_GO_API_KEY: ${OPENCODE_GO_API_KEY}
-      OPENCODE_GO_BASE_URL: ${OPENCODE_GO_BASE_URL}
-      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
-      OPENAI_API_KEY: ${OPENROUTER_API_KEY}
       API_SERVER_ENABLED: "true"
       API_SERVER_KEY: ${HERMES_API_KEY_ANNIQUE}
       # API binds only to hermes-peer; no host port or shared-network listener.

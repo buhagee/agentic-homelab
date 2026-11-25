@@ -1,5 +1,11 @@
 # Hermes UI Ownership Separation Implementation Plan
 
+> **Superseded 2026-11-25:** this plan implemented merge-preserving deploy.
+> The final design is seed-only: deploy writes `config.yaml`, `.env`, and
+> `SOUL.md` only when missing. The merge helper and its tests were removed.
+> Keep this document for history; use `docs/operations/hermes-ui-ownership.md`
+> as the active contract.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Make the Hermes web UI the single writer for MCP servers, plugins, skills, and OAuth tokens while Git remains the single writer for base infrastructure and provider configuration.

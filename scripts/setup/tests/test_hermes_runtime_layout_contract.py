@@ -7,7 +7,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 DOCKERFILE = REPO_ROOT / "services" / "agent" / "Dockerfile"
 START = REPO_ROOT / "services" / "agent" / "start.sh"
 COMPOSE = REPO_ROOT / "docker-compose.platform.yml"
-MANIFEST = REPO_ROOT / "services" / "agent" / "mcp-servers.shared.json"
+MANIFEST = REPO_ROOT / "docs" / "operations" / "hermes-mcp-reference" / "mcp-servers.shared.json"
 BACKUP = REPO_ROOT / "scripts" / "maintenance" / "backup.sh"
 DOC = REPO_ROOT / "docs" / "operations" / "hermes-ui-ownership.md"
 

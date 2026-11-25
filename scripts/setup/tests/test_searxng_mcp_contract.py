@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-MANIFEST = REPO_ROOT / "services" / "agent" / "mcp-servers.shared.json"
+MANIFEST = REPO_ROOT / "docs" / "operations" / "hermes-mcp-reference" / "mcp-servers.shared.json"
 COMPOSE = REPO_ROOT / "docker-compose.platform.yml"
 VERSIONS = REPO_ROOT / "versions.env"
 DEPLOY = REPO_ROOT / "scripts" / "deploy" / "deploy-agent-config.sh"
@@ -75,13 +75,12 @@ class SearxngMcpContractTests(unittest.TestCase):
         self.assertIn("- json", settings)
         self.assertIn("allow_private_urls: false", agent_config)
 
-    def test_deployment_preserves_ui_owned_blocks_for_both_agents(self):
-        self.assertIn("hermes_state_merge.py", self.deploy)
-        self.assertIn('"$HERMES_STATE_MERGE" config', self.deploy)
-        self.assertIn('"$HERMES_STATE_MERGE" env', self.deploy)
-        self.assertIn('write_config_yaml "$JUSTIN_DATA/config.yaml"', self.deploy)
-        self.assertIn('write_config_yaml "$ANNIQUE_DATA/config.yaml"', self.deploy)
-        self.assertIn("config.yaml.pre-deploy", self.deploy)
+    def test_deployment_seeds_config_and_env_only_when_missing(self):
+        self.assertIn("seed_config_yaml()", self.deploy)
+        self.assertIn("seed_runtime_env()", self.deploy)
+        self.assertIn('instance=justin seed_config_yaml "$JUSTIN_DATA/config.yaml"', self.deploy)
+        self.assertIn('instance=annique seed_config_yaml "$ANNIQUE_DATA/config.yaml"', self.deploy)
+        self.assertNotIn("hermes_state_merge", self.deploy)
         self.assertNotIn('"$HERMES_SRC/mcp-servers.shared.json"', self.deploy)
         self.assertNotIn('"$HERMES_SRC/mcp-servers.justin.json"', self.deploy)
         self.assertNotIn('"$HERMES_SRC/mcp-servers.annique.json"', self.deploy)

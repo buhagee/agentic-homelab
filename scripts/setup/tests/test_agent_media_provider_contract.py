@@ -24,7 +24,8 @@ class AgentMediaProviderContractTests(unittest.TestCase):
         self.assertIn("model: ${HERMES_IMAGE_GEN_MODEL}", self.config)
         self.assertIn("max_parallel_requests: ${HERMES_IMAGE_GEN_MAX_PARALLEL_REQUESTS}", self.config)
         self.assertIn("HERMES_IMAGE_GEN_MODEL=google/gemini-2.5-flash-image", self.env)
-        self.assertIn("OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}", self.compose)
+        self.assertNotIn("OPENROUTER_API_KEY:", self.compose)
+        self.assertIn("OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}", self.deploy)
         self.assertNotIn("FAL_KEY: ${FAL_KEY}", self.compose)
 
     def test_hermes_agents_do_not_configure_telegram(self):
@@ -34,12 +35,10 @@ class AgentMediaProviderContractTests(unittest.TestCase):
 
     def test_runtime_env_carries_generation_settings_without_logging_secrets(self):
         self.assertNotIn("HERMES_IMAGE_GEN_MODEL:-google/gemini-2.5-flash-image", self.deploy)
-        self.assertNotIn("OPENCODE_GO_BASE_URL:-", self.deploy)
-        self.assertIn("--managed-key HERMES_IMAGE_GEN_MODEL", self.deploy)
-        self.assertIn("--managed-key OPENCODE_GO_BASE_URL", self.deploy)
-        self.assertIn("write_runtime_env \"$JUSTIN_DATA/.env\"", self.deploy)
-        self.assertIn("write_runtime_env \"$ANNIQUE_DATA/.env\"", self.deploy)
-        self.assertIn("hermes_state_merge.py", self.deploy)
+        self.assertIn("seed_runtime_env()", self.deploy)
+        self.assertIn("OPENCODE_GO_BASE_URL=${OPENCODE_GO_BASE_URL:-}", self.deploy)
+        self.assertIn("HERMES_IMAGE_GEN_MODEL=${HERMES_IMAGE_GEN_MODEL:-}", self.deploy)
+        self.assertNotIn("--managed-key", self.deploy)
         self.assertNotIn("FAL_KEY=", self.deploy)
         self.assertNotIn("TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN_", self.compose)
         proxy = (REPO_ROOT / "services" / "skillclaw" / "proxy-entrypoint.sh").read_text(encoding="utf-8")

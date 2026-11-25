@@ -1,7 +1,7 @@
-# Hermes Agent — Git-owned shared base configuration
-# Deployed to /opt/data/config.yaml (HERMES_HOME) for each instance by deploy-agent-config.sh.
-# UI-owned blocks (mcp_servers, plugins) are merged from the live config by the
-# deploy script. Do not add mcp_servers or plugins here; deploy rejects them.
+# Hermes Agent — Git-owned config seed
+# Used only when /opt/data/config.yaml is missing. After the first boot, the
+# Hermes UI owns config.yaml, including model/provider, mcp_servers, and plugins.
+# Deploy never overwrites an existing config.yaml.
 
 # OpenRouter remains the dedicated OpenAI-compatible backend for vision and
 # other repo-managed surfaces that still expect an OpenAI-compatible endpoint.
