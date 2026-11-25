@@ -530,6 +530,7 @@ services:
       # Direct dashboard (Hermex 2.0 / hermes.${QACEY_DOMAIN}) — public bind
       # requires an auth provider; the basic-auth plugin reads these two.
       HERMES_DASHBOARD_HOST: 0.0.0.0
+      HERMES_DASHBOARD_PUBLIC_URL: "https://hermes.${QACEY_DOMAIN}"
       HERMES_DASHBOARD_BASIC_AUTH_USERNAME: ${HERMES_DASHBOARD_USERNAME_JUSTIN}
       HERMES_DASHBOARD_BASIC_AUTH_PASSWORD: ${HERMES_DASHBOARD_PASSWORD_JUSTIN}
       # Restrict terminal execution to the local container namespace only.
@@ -621,6 +622,7 @@ services:
       # Direct dashboard (Hermex 2.0 / hermes-annique.${QACEY_DOMAIN}) — public
       # bind requires an auth provider; the basic-auth plugin reads these two.
       HERMES_DASHBOARD_HOST: 0.0.0.0
+      HERMES_DASHBOARD_PUBLIC_URL: "https://hermes-annique.${QACEY_DOMAIN}"
       HERMES_DASHBOARD_BASIC_AUTH_USERNAME: ${HERMES_DASHBOARD_USERNAME_ANNIQUE}
       HERMES_DASHBOARD_BASIC_AUTH_PASSWORD: ${HERMES_DASHBOARD_PASSWORD_ANNIQUE}
       # U-06: rtk-hermes — enable rewrites for both local and docker backends

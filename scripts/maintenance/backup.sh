@@ -299,6 +299,8 @@ main() {
     add_restic_path /mnt/ssd/qacey/hermes/justin/data/SOUL.md
     add_restic_path /mnt/ssd/qacey/hermes/justin/data/memories
     add_restic_path /mnt/ssd/qacey/hermes/justin/data/profiles
+    add_restic_path /mnt/ssd/qacey/hermes/justin/data/plugins
+    add_restic_path /mnt/ssd/qacey/hermes/justin/data/mcp-tokens
     add_restic_path /mnt/ssd/qacey/hermes/justin/data/kanban.db
     add_restic_path /mnt/ssd/qacey/hermes/justin/data/response_store.db
     add_restic_path /mnt/ssd/qacey/hermes/justin/data/google-workspace
