@@ -34,7 +34,7 @@ OPERATIONAL_FILES = [
 ]
 OPERATIONAL_FILES.extend((REPO_ROOT / "services" / "agent").glob("persona.*.md"))
 OPERATIONAL_FILES.extend((REPO_ROOT / "services" / "agent").glob("config.*.yaml"))
-OPERATIONAL_FILES.extend((REPO_ROOT / "services" / "agent").glob("mcp-servers*.json"))
+OPERATIONAL_FILES.extend((REPO_ROOT / "docs" / "operations" / "hermes-mcp-reference").glob("mcp-servers*.json"))
 OPERATIONAL_FILES.extend((REPO_ROOT / "infrastructure" / "backup").glob("*"))
 for pattern in ("*.sh", "*.py"):
     OPERATIONAL_FILES.extend(

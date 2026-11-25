@@ -24,6 +24,27 @@ class BackupConfigContractTests(unittest.TestCase):
         ):
             self.assertIn(relative, text)
 
+    def test_backup_includes_ui_owned_hermes_state(self):
+        text = BACKUP.read_text(encoding="utf-8")
+        for relative in (
+            "/mnt/ssd/qacey/hermes/justin/data/plugins",
+            "/mnt/ssd/qacey/hermes/justin/data/mcp-tokens",
+        ):
+            self.assertIn(relative, text)
+
+    def test_hermes_dashboard_public_url_is_explicit(self):
+        compose = (REPO_ROOT / "docker-compose.platform.yml").read_text(encoding="utf-8")
+        justin = compose.split("  hermes-justin:\n", 1)[1].split("\n  # ──", 1)[0]
+        annique = compose.split("  hermes-annique:\n", 1)[1].split("\n  # ──", 1)[0]
+        self.assertIn(
+            'HERMES_DASHBOARD_PUBLIC_URL: "https://hermes.${QACEY_DOMAIN}"',
+            justin,
+        )
+        self.assertIn(
+            'HERMES_DASHBOARD_PUBLIC_URL: "https://hermes-annique.${QACEY_DOMAIN}"',
+            annique,
+        )
+
     def test_backup_resolves_deploy_secrets_and_allowlist(self):
         text = BACKUP.read_text(encoding="utf-8")
         self.assertIn("getent passwd", text)

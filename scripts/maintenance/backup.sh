@@ -299,9 +299,14 @@ main() {
     add_restic_path /mnt/ssd/qacey/hermes/justin/data/SOUL.md
     add_restic_path /mnt/ssd/qacey/hermes/justin/data/memories
     add_restic_path /mnt/ssd/qacey/hermes/justin/data/profiles
+    add_restic_path /mnt/ssd/qacey/hermes/justin/data/plugins
+    add_restic_path /mnt/ssd/qacey/hermes/justin/data/mcp-tokens
+    add_restic_path /mnt/ssd/qacey/hermes/justin/data/skills
     add_restic_path /mnt/ssd/qacey/hermes/justin/data/kanban.db
     add_restic_path /mnt/ssd/qacey/hermes/justin/data/response_store.db
     add_restic_path /mnt/ssd/qacey/hermes/justin/data/google-workspace
+    # Tool HOME: git/ssh/npm/uv state and MCP credentials.
+    add_restic_path /mnt/ssd/qacey/hermes/justin/home
 
     # Platform configuration and secrets. Restic encrypts the repository, so
     # these are protected at rest; keep RESTIC_PASSWORD outside the host.

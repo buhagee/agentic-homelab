@@ -7,7 +7,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[4]
 CONFIG = REPO_ROOT / "services" / "agent" / "google_workspace_mcp" / "config.py"
 MCP_MAIN = REPO_ROOT / "services" / "agent" / "google_workspace_mcp" / "__main__.py"
-JUSTIN_MANIFEST = REPO_ROOT / "services" / "agent" / "mcp-servers.justin.json"
+JUSTIN_MANIFEST = REPO_ROOT / "docs" / "operations" / "hermes-mcp-reference" / "mcp-servers.justin.json"
 
 
 class GmailSurfaceContractTests(unittest.TestCase):

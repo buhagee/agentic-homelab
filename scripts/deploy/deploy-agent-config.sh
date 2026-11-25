@@ -2,10 +2,18 @@
 # =============================================================================
 # deploy-agent-config.sh — Deploy Hermes Agent config to host volumes
 # =============================================================================
-# Merges services/agent/config.shared.yaml + per-user MCP servers into a
-# final config.yaml for each Hermes instance (HERMES_HOME=/opt/data).
+# Seeds Hermes config.yaml, .env, and SOUL.md only when they are absent.
+# After seeding, the Hermes UI owns all live agent configuration:
+#   - model/provider and API keys
+#   - mcp_servers
+#   - plugins
+#   - skills
+#   - OAuth tokens
+#
+# Deploy never overwrites an existing config.yaml, .env, or SOUL.md.
+# MCP manifests are archived under docs/operations/hermes-mcp-reference/.
 # Variables in config.shared.yaml (e.g. ${HERMES_MODEL}) are substituted from
-# .env plus the private secrets/.env overlay at deploy time.
+# .env plus the private secrets/.env overlay at seed time.
 #
 # Usage:
 #   bash scripts/deploy-agent-config.sh
@@ -30,7 +38,7 @@ HERMES_BASE_DIR="${HERMES_BASE_DIR:-/mnt/ssd/qacey/hermes}"
 JUSTIN_DATA="${JUSTIN_DATA:-$HERMES_BASE_DIR/justin/data}"
 ANNIQUE_DATA="${ANNIQUE_DATA:-$HERMES_BASE_DIR/annique/data}"
 
-# hermes home dirs (for ~/.hermes runtime files)
+# Tool HOME dirs (mounted at /opt/data/home, inside HERMES_HOME)
 JUSTIN_HOME="${JUSTIN_HOME:-$HERMES_BASE_DIR/justin/home}"
 ANNIQUE_HOME="${ANNIQUE_HOME:-$HERMES_BASE_DIR/annique/home}"
 
@@ -52,14 +60,6 @@ is_real_secret_value() {
   local value="${1:-}"
 
   [[ -n "$value" ]] && [[ ! "$value" =~ ^__.*__$ ]]
-}
-
-google_workspace_enabled_for_user() {
-  local refresh_token="$1"
-
-  is_real_secret_value "${GOOGLE_WORKSPACE_CLIENT_ID:-}" \
-    && is_real_secret_value "${GOOGLE_WORKSPACE_CLIENT_SECRET:-}" \
-    && is_real_secret_value "$refresh_token"
 }
 
 write_google_workspace_auth_file() {
@@ -126,7 +126,7 @@ harden_runtime_permissions() {
       [[ -f "$data_dir/$path" ]] && chmod 600 "$data_dir/$path"
     done
 
-    for path in sessions memories cron/output profiles; do
+    for path in sessions memories cron/output profiles mcp-tokens; do
       harden_private_tree "$data_dir/$path"
     done
 
@@ -148,15 +148,12 @@ harden_runtime_permissions() {
 # ── Validate source files ────────────────────────────────────────────────────
 for f in \
   "$HERMES_SRC/config.shared.yaml" \
-  "$HERMES_SRC/mcp-servers.shared.json" \
-  "$HERMES_SRC/mcp-servers.justin.json" \
-  "$HERMES_SRC/mcp-servers.annique.json" \
   "$HERMES_SRC/persona.justin.md" \
   "$HERMES_SRC/persona.annique.md"; do
   [[ -f "$f" ]] || die "Missing source file: $f"
 done
 
-command -v jq >/dev/null 2>&1 || die "jq is required. Install with: sudo apt install jq"
+command -v envsubst >/dev/null 2>&1 || die "envsubst is required for Hermes config seeding"
 
 # ── Load env files for variable substitution ────────────────────────────────
 ENV_FILE="$PLATFORM_DIR/.env"
@@ -179,99 +176,39 @@ mkdir -p "$SKILLS_DIR/shared" "$SKILLS_DIR/justin" "$SKILLS_DIR/annique"
 mkdir -p "$JUSTIN_DATA/workbooks" "$ANNIQUE_DATA/workbooks"
 success "Directories ready"
 
-JUSTIN_GOOGLE_WORKSPACE_ENABLED=0
-ANNIQUE_GOOGLE_WORKSPACE_ENABLED=0
-
-if google_workspace_enabled_for_user "${GOOGLE_WORKSPACE_REFRESH_TOKEN_JUSTIN:-}"; then
-  JUSTIN_GOOGLE_WORKSPACE_ENABLED=1
-elif ! is_real_secret_value "${GOOGLE_WORKSPACE_CLIENT_ID:-}" || ! is_real_secret_value "${GOOGLE_WORKSPACE_CLIENT_SECRET:-}"; then
-  info "Justin: Google Workspace MCP disabled because the shared OAuth client is incomplete"
-else
-  info "Justin: Google Workspace MCP disabled because GOOGLE_WORKSPACE_REFRESH_TOKEN_JUSTIN is missing"
-fi
-
-if google_workspace_enabled_for_user "${GOOGLE_WORKSPACE_REFRESH_TOKEN_ANNIQUE:-}"; then
-  ANNIQUE_GOOGLE_WORKSPACE_ENABLED=1
-elif ! is_real_secret_value "${GOOGLE_WORKSPACE_CLIENT_ID:-}" || ! is_real_secret_value "${GOOGLE_WORKSPACE_CLIENT_SECRET:-}"; then
-  info "Annique: Google Workspace MCP disabled because the shared OAuth client is incomplete"
-else
-  info "Annique: Google Workspace MCP disabled because GOOGLE_WORKSPACE_REFRESH_TOKEN_ANNIQUE is missing"
-fi
-
 # ── Resolve Hermes UID/GID ───────────────────────────────────────────────────
 # Respect explicit values loaded from .env. The runtime files are owner-only,
 # so the compose process UID must match the owner that writes them.
 HERMES_UID="${HERMES_UID:-$(id -u hermes 2>/dev/null || echo 999)}"
 HERMES_GID="${HERMES_GID:-$(id -g hermes 2>/dev/null || echo 982)}"
 
-# ── Helper: build config.yaml from shared base + MCP JSON sources ────────────
-# Usage: write_config_yaml <dest> <google-workspace-enabled> <mcp-json-file> [<mcp-json-file> ...]
-write_config_yaml() {
+# ── Helper: seed Git-owned config only when live config is absent ───────────
+# Usage: instance=<name> seed_config_yaml <dest>
+seed_config_yaml() {
   local dest="$1"
-  local google_workspace_enabled="$2"
-  shift 2
-  local tmp_json tmp_yaml
-  tmp_json="$(mktemp)"
-  tmp_yaml="$(mktemp)"
+  local overlay="$HERMES_SRC/config.${instance:-shared}.yaml"
+  local tmp_yaml
 
-  # 1. Merge MCP JSON sources without expanding ${VAR} references. Hermes
-  # resolves those references from HERMES_HOME/.env at MCP process launch;
-  # expanding here would embed passwords and tokens in config.yaml.
-  jq -s 'reduce .[] as $x ({}; . * $x)' "$@" > "$tmp_json"
-  if [[ "$google_workspace_enabled" != "1" ]]; then
-    jq 'del(.google_workspace)' "$tmp_json" > "${tmp_json}.stripped"
-    mv "${tmp_json}.stripped" "$tmp_json"
+  if [[ -f "$dest" ]]; then
+    info "${instance^}: config.yaml exists; leaving UI-owned config unchanged"
+    return 0
   fi
-  # Paperless MCP is only usable when its API token is configured. Omit it from
-  # Hermes manifests until then so the gateway does not repeatedly retry a
-  # deliberately dormant container.
-  if ! is_real_secret_value "${PAPERLESS_API_TOKEN:-}"; then
-    jq 'del(.paperless)' "$tmp_json" > "${tmp_json}.stripped"
-    mv "${tmp_json}.stripped" "$tmp_json"
-  fi
-  # 2. Set per-instance terminal vars then substitute non-secret settings.
+
+  tmp_yaml="$(mktemp "${dest}.XXXXXX")"
   HERMES_TERMINAL_BACKEND="local"
   HERMES_TERMINAL_IMAGE=""
   export HERMES_TERMINAL_BACKEND HERMES_TERMINAL_IMAGE
   envsubst < "$HERMES_SRC/config.shared.yaml" > "$tmp_yaml"
 
-  # 2b. Merge per-instance overlay if provided (e.g. config.justin.yaml)
-  local overlay="$HERMES_SRC/config.${instance:-shared}.yaml"
   if [[ -f "$overlay" && "$overlay" != "$HERMES_SRC/config.shared.yaml" ]]; then
-    local tmp_overlay
-    tmp_overlay="$(mktemp)"
     envsubst < "$overlay" >> "$tmp_yaml"
-    rm -f "$tmp_overlay"
   fi
 
-  # 3. Append mcp_servers block — handles both HTTP (url:) and stdio (command:) entries
-  {
-    cat "$tmp_yaml"
-    echo ""
-    echo "mcp_servers:"
-    jq -r '
-      to_entries[] |
-      if .value.url then
-        "  \(.key):\n    url: \"\(.value.url)\"\n    transport: \(.value.transport // "streamable_http")"
-      else
-        ( (.value.args // []) as $args |
-          "  \(.key):\n    command: \(.value.command)\n" +
-          if ($args | length) == 0 then
-            "    args: []\n"
-          else
-            "    args:\n" + ($args | map("      - \"" + . + "\"") | join("\n")) + "\n"
-          end +
-          if .value.env then
-            "    env:\n" +
-            (.value.env | to_entries | map("      \(.key): \"\(.value)\"") | join("\n"))
-          else "" end
-        )
-      end
-    ' "$tmp_json"
-  } | tee "$dest" > /dev/null
-  chmod 600 "$dest"
-
-  rm -f "$tmp_json" "$tmp_yaml"
+  warn_unresolved_runtime_references "$tmp_yaml"
+  assert_no_embedded_secrets "$tmp_yaml"
+  chmod 600 "$tmp_yaml"
+  mv "$tmp_yaml" "$dest"
+  success "${instance^}: config.yaml seeded (UI owns future changes)"
 }
 
 assert_no_embedded_secrets() {
@@ -307,73 +244,77 @@ warn_unresolved_runtime_references() {
   fi
 }
 
-# ── Generate and deploy config.yaml ─────────────────────────────────────────
-info "Generating config.yaml for Justin..."
-instance=justin write_config_yaml "$JUSTIN_DATA/config.yaml" "$JUSTIN_GOOGLE_WORKSPACE_ENABLED" \
-  "$HERMES_SRC/mcp-servers.shared.json" \
-  "$HERMES_SRC/mcp-servers.justin.json"
-assert_no_embedded_secrets "$JUSTIN_DATA/config.yaml"
-warn_unresolved_runtime_references "$JUSTIN_DATA/config.yaml"
-success "Justin: config.yaml written"
+# ── Seed config.yaml only when missing ──────────────────────────────────────
+info "Seeding config.yaml for Justin if missing..."
+instance=justin seed_config_yaml "$JUSTIN_DATA/config.yaml"
 
-info "Generating config.yaml for Annique..."
-instance=annique write_config_yaml "$ANNIQUE_DATA/config.yaml" "$ANNIQUE_GOOGLE_WORKSPACE_ENABLED" \
-  "$HERMES_SRC/mcp-servers.shared.json" \
-  "$HERMES_SRC/mcp-servers.annique.json"
-assert_no_embedded_secrets "$ANNIQUE_DATA/config.yaml"
-warn_unresolved_runtime_references "$ANNIQUE_DATA/config.yaml"
-success "Annique: config.yaml written"
+info "Seeding config.yaml for Annique if missing..."
+instance=annique seed_config_yaml "$ANNIQUE_DATA/config.yaml"
 
-# ── Deploy persona files (SOUL.md) ───────────────────────────────────────────
-info "Deploying SOUL.md..."
-cp "$HERMES_SRC/persona.justin.md" "$JUSTIN_DATA/SOUL.md"
-chmod 600 "$JUSTIN_DATA/SOUL.md"
-success "Justin: SOUL.md deployed"
-cp "$HERMES_SRC/persona.annique.md" "$ANNIQUE_DATA/SOUL.md"
-chmod 600 "$ANNIQUE_DATA/SOUL.md"
-success "Annique: SOUL.md deployed"
+# ── Seed persona files (SOUL.md) only when missing ──────────────────────────
+seed_soul() {
+  local dest="$1" src="$2" label="$3"
 
-# ── Deploy provider API keys to runtime .env files ───────────────────────────
-# Each Hermes runtime reads HERMES_HOME/.env for provider keys (separate from
-# the rendered config.yaml). Keep OpenRouter mirrored into OPENAI_API_KEY so
-# auxiliary vision calls continue to use the OpenAI-compatible backend even when
-# the main text provider switches to opencode-go.
-info "Writing provider keys to runtime .env files..."
-for agent in justin annique; do
-  if [[ "$agent" == "justin" ]]; then
-    agent_data_dir="$JUSTIN_DATA"
-  else
-    agent_data_dir="$ANNIQUE_DATA"
+  if [[ -f "$dest" ]]; then
+    info "${label}: SOUL.md exists; leaving UI-owned persona unchanged"
+    return 0
+  fi
+  cp "$src" "$dest"
+  chmod 600 "$dest"
+  success "${label}: SOUL.md seeded (UI owns future changes)"
+}
+
+info "Seeding SOUL.md if missing..."
+seed_soul "$JUSTIN_DATA/SOUL.md" "$HERMES_SRC/persona.justin.md" "Justin"
+seed_soul "$ANNIQUE_DATA/SOUL.md" "$HERMES_SRC/persona.annique.md" "Annique"
+
+# ── Seed runtime .env only when missing ─────────────────────────────────────
+# Hermes reads HERMES_HOME/.env for provider keys. After the first seed, the
+# dashboard API Keys page owns this file.
+seed_runtime_env() {
+  local dest="$1"
+  local tmp_env
+
+  if [[ -f "$dest" ]]; then
+    info ".env exists; leaving UI-owned env unchanged"
+    return 0
   fi
 
-  if [[ "$agent" == "justin" ]]; then
-    cat > "$agent_data_dir/.env" <<ENVEOF
+  tmp_env="$(mktemp "${dest}.XXXXXX")"
+  cat > "$tmp_env" <<ENVEOF
 OPENCODE_GO_API_KEY=${OPENCODE_GO_API_KEY:-}
-OPENCODE_GO_BASE_URL=${OPENCODE_GO_BASE_URL}
+OPENCODE_GO_BASE_URL=${OPENCODE_GO_BASE_URL:-}
 OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
 OPENAI_API_KEY=${OPENROUTER_API_KEY:-}
-HERMES_IMAGE_GEN_MODEL=${HERMES_IMAGE_GEN_MODEL}
+HERMES_IMAGE_GEN_MODEL=${HERMES_IMAGE_GEN_MODEL:-}
 SKILLCLAW_MODEL=${SKILLCLAW_MODEL:-}
 HA_LONG_LIVED_TOKEN=${HA_LONG_LIVED_TOKEN:-}
 ENVEOF
-  else
-    cat > "$agent_data_dir/.env" <<ENVEOF
-OPENCODE_GO_API_KEY=${OPENCODE_GO_API_KEY:-}
-OPENCODE_GO_BASE_URL=${OPENCODE_GO_BASE_URL}
-OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
-OPENAI_API_KEY=${OPENROUTER_API_KEY:-}
-HERMES_IMAGE_GEN_MODEL=${HERMES_IMAGE_GEN_MODEL}
-SKILLCLAW_MODEL=${SKILLCLAW_MODEL:-}
-HA_LONG_LIVED_TOKEN=${HA_LONG_LIVED_TOKEN:-}
-ENVEOF
-  fi
-  chmod 600 "$agent_data_dir/.env"
-  success "${agent^}: runtime .env written (provider keys)"
-done
+  chmod 600 "$tmp_env"
+  mv "$tmp_env" "$dest"
+  success "runtime .env seeded (UI owns future changes)"
+}
+
+info "Seeding runtime .env if missing..."
+seed_runtime_env "$JUSTIN_DATA/.env"
+seed_runtime_env "$ANNIQUE_DATA/.env"
 
 info "Writing Google Workspace auth material..."
 write_google_workspace_auth_file "$JUSTIN_DATA" "${GOOGLE_WORKSPACE_REFRESH_TOKEN_JUSTIN:-}" "Justin"
 write_google_workspace_auth_file "$ANNIQUE_DATA" "${GOOGLE_WORKSPACE_REFRESH_TOKEN_ANNIQUE:-}" "Annique"
+
+warn_google_workspace_mcp_without_auth() {
+  local data_dir="$1" label="$2"
+
+  [[ -f "$data_dir/google-workspace/auth.json" ]] && return 0
+  if grep -q '^  google_workspace:' "$data_dir/config.yaml" 2>/dev/null; then
+    warn "$label: google_workspace MCP is configured but auth material is absent."
+    warn "$label: disable or remove google_workspace in the Hermes UI."
+  fi
+}
+
+warn_google_workspace_mcp_without_auth "$JUSTIN_DATA" "Justin"
+warn_google_workspace_mcp_without_auth "$ANNIQUE_DATA" "Annique"
 
 harden_runtime_permissions
 
@@ -425,7 +366,7 @@ sudo find "$SKILLS_DIR" -type f -perm /111 -exec chmod 750 {} +
 success "Skill directories ready (manage via WebUI)"
 
 # ── U-09: Deploy Justin-only scripts ─────────────────────────────────────────
-# Scripts live at ~/.hermes/scripts/ (HERMES_HOME/.hermes/scripts/) inside the container.
+# Scripts live at /opt/data/scripts inside the container.
 # Keep scripts group-readable/executable for the Hermes runtime, never world-readable.
 JUSTIN_SCRIPTS_DIR="$JUSTIN_DATA/scripts"
 if [[ -d "$HERMES_SRC/scripts" ]]; then
@@ -451,7 +392,8 @@ if [[ "${PRUNE_SKILL_GIT_METADATA:-1}" == "1" ]]; then
 fi
 
 echo ""
-info "Done. Restart containers to pick up the new config:"
+info "Done. Live config, env, and persona were left untouched if they existed."
+info "Restart containers only when a seed or operational change requires it:"
 info "  bash scripts/start.sh"
-info "Or to reload MCP without restart, ask Hermes: /reload-mcp"
+info "MCP changes are managed in the Hermes UI; use /reload-mcp when asked."
 
