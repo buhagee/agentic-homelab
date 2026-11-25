@@ -11,7 +11,6 @@
 # ├──────────────────────────────────────────────────────────────────────────────┤
 # │  */15 * * * * │  every 15 min  │  Memory monitor           │  cron         │
 # │  */15 * * * * │  every 15 min  │  Host healthcheck         │  systemd      │
-# │  0 14 * * *   │  12:00 AM      │  SkillClaw evolve (LLM)   │  cron         │
 # │  0 15 * * *   │  1:00 AM       │  Immich face-to-album     │  cron         │
 # │  0 16 * * *   │  2:00 AM       │  DB dump + rsync + B2     │  systemd      │
 # └──────────────────────────────────────────────────────────────────────────────┘
@@ -29,15 +28,6 @@
 
 # Face-to-album sync — daily at 1:00 AM AEST (15:00 UTC), 1 hour before backup
 0 15 * * * $HOME/projects/qacey-platform/scripts/tools/immich-face-to-album/immich-face-to-album.sh >> /var/log/qacey-cron/face-to-album.log 2>&1
-
-# ── SkillClaw ─────────────────────────────────────────────────────────────────
-
-# SkillClaw skill evolution — daily at 12:00 AM AEST (14:00 UTC)
-# Drains captured agent sessions and evolves the shared skill library (local 7b
-# model, CPU-heavy). Scheduled between the nightly digest (13:00) and
-# face-to-album (15:00) so the CPU-bound LLM jobs don't overlap.
-# The skillclaw evolve server's own interval is set to 24h (idle); this drives it.
-0 14 * * * $HOME/projects/qacey-platform/scripts/maintenance/skillclaw-evolve.sh >> /var/log/qacey-cron/skillclaw-evolve.log 2>&1
 
 # =============================================================================
 # SYSTEMD JOBS (managed separately — documented here for visibility)

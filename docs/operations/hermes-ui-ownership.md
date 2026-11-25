@@ -88,7 +88,7 @@ Everything the dashboard may preview must live under `HERMES_HOME=/opt/data`.
   plugins/
   mcp-tokens/
   skills/
-    shared/          # SkillClaw shared library, read-only to the agent
+    shared/          # shared skill library, read-only to the agent
     justin/          # per-agent library
   home/              # HOME for tools and MCP subprocesses
   workspace/         # default agent working directory
@@ -153,7 +153,7 @@ Before recreating the containers:
 # Inspect what the old home contains.
 find /mnt/ssd/qacey/hermes/justin/home -maxdepth 3 -type d | sort
 
-# If old home held skills, move them into the shared SkillClaw tree.
+# If old home held skills, move them into the shared skill tree.
 # Do not leave a skills directory under the new HOME; Hermes won't scan it.
 # mv /mnt/ssd/qacey/hermes/justin/home/skills/* \
 #    /mnt/ssd/qacey/hermes/skills/justin/
@@ -163,8 +163,8 @@ The same host `justin/home` directory is reused. It is now mounted at
 `/opt/data/home` instead of `/opt/hermes/home/.hermes`. Tool dotfiles such as
 `.ssh`, `.gitconfig`, `.config`, and `.local` land in the correct place.
 
-Existing `/opt/data/skills` content is preserved. The SkillClaw mounts appear
-as `/opt/data/skills/shared` and `/opt/data/skills/justin`.
+Existing `/opt/data/skills` content is preserved. The shared and per-agent skill
+mounts appear as `/opt/data/skills/shared` and `/opt/data/skills/justin`.
 
 Verify after recreate:
 

@@ -66,6 +66,21 @@ class CleanupContractTests(unittest.TestCase):
             text = (REPO_ROOT / relative).read_text(encoding="utf-8").lower()
             self.assertNotIn("rtk", text, relative)
 
+    def test_skillclaw_is_removed(self):
+        compose = (REPO_ROOT / "docker-compose.platform.yml").read_text(encoding="utf-8")
+        self.assertNotIn("skillclaw", compose.lower())
+        self.assertFalse((REPO_ROOT / "services" / "skillclaw").exists())
+        self.assertFalse((MAINTENANCE / "skillclaw-evolve.sh").exists())
+        for relative in (
+            "scripts/maintenance/platform-healthcheck.sh",
+            "scripts/crontab.txt",
+            "scripts/build.sh",
+            "scripts/setup/first-time-setup.sh",
+            "scripts/deploy/deploy-agent-config.sh",
+        ):
+            text = (REPO_ROOT / relative).read_text(encoding="utf-8").lower()
+            self.assertNotIn("skillclaw", text, relative)
+
     def test_no_tracked_pycache(self):
         if not (REPO_ROOT / ".git").exists():
             self.skipTest("no git metadata")

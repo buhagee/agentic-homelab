@@ -552,7 +552,7 @@ services:
       - /mnt/ssd/qacey/hermes/justin/data:/opt/data
       # Tool HOME (git/ssh/npm/uv, MCP state) stays inside the managed root.
       - /mnt/ssd/qacey/hermes/justin/home:/opt/data/home
-      # U-07: skill volumes (shared ro; per-user rw for SkillClaw)
+      # U-07: skill volumes (shared ro; per-user rw)
       - /mnt/ssd/qacey/hermes/skills/shared:/opt/data/skills/shared:ro
       - /mnt/ssd/qacey/hermes/skills/justin:/opt/data/skills/justin:rw
     networks:
@@ -645,7 +645,7 @@ services:
       - /mnt/ssd/qacey/hermes/annique/data:/opt/data
       # Tool HOME (git/ssh/npm/uv, MCP state) stays inside the managed root.
       - /mnt/ssd/qacey/hermes/annique/home:/opt/data/home
-      # U-07: skill volumes (shared ro; per-user rw for SkillClaw)
+      # U-07: skill volumes (shared ro; per-user rw)
       - /mnt/ssd/qacey/hermes/skills/shared:/opt/data/skills/shared:ro
       - /mnt/ssd/qacey/hermes/skills/annique:/opt/data/skills/annique:rw
     networks:
@@ -856,68 +856,6 @@ services:
       - "traefik.http.routers.hermes-sandbox-cf.middlewares=secure-headers@file"
       - "traefik.http.services.hermes-sandbox.loadbalancer.server.port=4180"
     mem_limit: 256m
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  # ── U-07: SkillClaw — Evolve Server (skill auto-evolution) ────────────────
-  # Reads recorded sessions from the shared store, evolves + deduplicates skills
-  # and writes them back to shared/ + per-user dirs. Sessions are captured by
-  # import-hermes-sessions.py (reads both agents' native Hermes session logs —
-  # no proxy in the agents' request path). Runs once nightly via host cron, so
-  # it uses Google AI (fast/cheap) rather than slow local CPU inference.
-  skillclaw:
-    build:
-      context: ${PLATFORM_DIR}/services/skillclaw
-      dockerfile: Dockerfile
-    image: qacey/skillclaw:local
-    container_name: skillclaw
-    restart: unless-stopped
-    command:
-      - skillclaw-evolve-server
-      - --storage-backend
-      - local
-      - --local-root
-      - /skills/shared
-      - --group-id
-      - qacey
-      - --interval
-      - "86400"
-      - --port
-      - "8787"
-    environment:
-      # SkillClaw evolution now uses the same OpenCode Go endpoint/key as the
-      # Hermes main-text path. OpenCode Go serves an OpenAI-compatible relay at
-      # the URL below; fall back to OpenRouter only if the key is missing.
-      OPENAI_API_KEY: ${OPENCODE_GO_API_KEY}
-      OPENAI_BASE_URL: ${OPENCODE_GO_BASE_URL}
-      EVOLVE_MODEL: ${SKILLCLAW_MODEL}
-      EVOLVE_ENGINE: "workflow"
-    volumes:
-      # Read-only access to each agent's native Hermes session logs (input)
-      - /mnt/ssd/qacey/hermes/justin/data:/sessions/justin:ro
-      - /mnt/ssd/qacey/hermes/annique/data:/sessions/annique:ro
-      # Read-write skill access for evolution output
-      - /mnt/ssd/qacey/hermes/skills/shared:/skills/shared:rw
-      - /mnt/ssd/qacey/hermes/skills/justin:/skills/justin:rw
-      - /mnt/ssd/qacey/hermes/skills/annique:/skills/annique:rw
-    networks:
-      - qacey-proxy      # external egress (reach Google AI)
-      - qacey-internal
-    deploy:
-      resources:
-        limits:
-          memory: 512m
-    security_opt:
-      - no-new-privileges:true
-    healthcheck:
-      test: ["CMD-SHELL", "python3 -c \"import socket; socket.create_connection(('127.0.0.1', 8787), 2).close()\""]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
     logging:
       driver: json-file
       options:

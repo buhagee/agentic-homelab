@@ -85,7 +85,7 @@ STATEFUL=0
 if grep -qx 'docker-compose.platform.yml' <<< "$CHANGED"; then
   STATEFUL=1
 fi
-if grep -Eq '^services/(agent|skillclaw)/' <<< "$CHANGED"; then
+if grep -Eq '^services/agent/' <<< "$CHANGED"; then
   STATEFUL=1
 fi
 
@@ -159,6 +159,20 @@ refresh_controller() {
   python3 scripts/setup/install-opencode-docker-control.py
 }
 
+# Containers whose services were removed from Compose. Keep this list so the
+# next deploy does not leave an orphan running.
+RETIRED_CONTAINERS=(skillclaw)
+
+retire_containers() {
+  local name
+  for name in "${RETIRED_CONTAINERS[@]}"; do
+    if docker inspect "$name" >/dev/null 2>&1; then
+      echo "Removing retired container: $name"
+      docker rm -f "$name" || return 1
+    fi
+  done
+}
+
 verify_fresh_dumps() {
   local prefix
   for prefix in immich paperless mnemo_justin mnemo_annique; do
@@ -190,17 +204,19 @@ deploy_stack() {
   refresh_controller \
     && compose pull --ignore-buildable \
     && compose up -d --wait --wait-timeout 300 \
-    && bash scripts/maintenance/platform-healthcheck.sh
+    && bash scripts/maintenance/platform-healthcheck.sh \
+    && retire_containers
 }
 
 if [[ "$ALREADY_DEPLOYED" -eq 1 ]]; then
   git checkout --force -B main "$SHA"
   echo "=== Qacey deploy no-op: $SHA already deployed ==="
   refresh_controller
-  if bash scripts/maintenance/platform-healthcheck.sh; then
-    printf '%s\n' "$SHA" > "$LAST_GOOD_FILE"
-    exit 0
-  fi
+  retire_containers \
+    && if bash scripts/maintenance/platform-healthcheck.sh; then
+      printf '%s\n' "$SHA" > "$LAST_GOOD_FILE"
+      exit 0
+    fi
   die "healthcheck failed for already-deployed SHA $SHA"
 fi
 
