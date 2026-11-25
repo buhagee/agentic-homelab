@@ -1,6 +1,6 @@
 # Hermes UI Ownership Separation Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Make the Hermes web UI the single writer for MCP servers, plugins, skills, and OAuth tokens while Git remains the single writer for base infrastructure and provider configuration.
 
@@ -50,7 +50,7 @@
   - CLI: `python3 scripts/lib/hermes_state_merge.py config --base PATH --live PATH --output PATH`
   - CLI: `python3 scripts/lib/hermes_state_merge.py env --existing PATH --output PATH --managed-key KEY [--managed-key KEY ...]`
 
-- [ ] **Step 1: Write the failing helper tests**
+- [x] **Step 1: Write the failing helper tests**
 
 Create `scripts/setup/tests/test_hermes_state_merge.py` with tests for:
 
@@ -71,23 +71,23 @@ def test_config_preserves_mcp_and_plugins_blocks():
 
 Also test: first deploy with no live config; base collision raises `ValueError`; duplicate live block raises `ValueError`; trailing comments and nested lines survive; `.env` updates managed keys while preserving UI keys and comments; empty managed value removes stale key; newline in value raises; atomic write sets mode `600`.
 
-- [ ] **Step 2: Run tests and verify failure**
+- [x] **Step 2: Run tests and verify failure**
 
 Run: `python3 -m unittest discover -s scripts/setup/tests -p 'test_hermes_state_merge.py' -v`
 Expected: FAIL with `ModuleNotFoundError` or missing `merge_config`.
 
-- [ ] **Step 3: Implement the helper**
+- [x] **Step 3: Implement the helper**
 
 Use top-level YAML block detection with `^([A-Za-z0-9_.-]+):(?:\s|$)`; do not parse YAML semantics. Extract the whole block through the line before the next top-level key. Preserve text verbatim. Reject duplicate preserved keys and any preserved key already present in the base. Write with `tempfile.NamedTemporaryFile` in the destination directory, `os.fsync`, `chmod(0o600)`, then `os.replace`.
 
 For `.env`, match `^([A-Za-z_][A-Za-z0-9_]*)=`; drop managed keys, preserve all other lines, append managed keys in argument order. Reject keys outside the regex and values containing `\n` or `\r`.
 
-- [ ] **Step 4: Run tests and verify pass**
+- [x] **Step 4: Run tests and verify pass**
 
 Run: `python3 -m unittest discover -s scripts/setup/tests -p 'test_hermes_state_merge.py' -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/lib/hermes_state_merge.py scripts/setup/tests/test_hermes_state_merge.py
@@ -107,7 +107,7 @@ git commit -m "feat: add Hermes config and env merge helper"
 - Consumes: `scripts/lib/hermes_state_merge.py config`.
 - Produces: `write_config_yaml <dest>` preserving live `mcp_servers` and `plugins`.
 
-- [ ] **Step 1: Write the failing contract tests**
+- [x] **Step 1: Write the failing contract tests**
 
 Replace the old renderer test with assertions that `deploy-agent-config.sh`:
 - calls `hermes_state_merge.py config`
@@ -115,12 +115,12 @@ Replace the old renderer test with assertions that `deploy-agent-config.sh`:
 - still calls `write_config_yaml` for Justin and Annique
 - writes a `.pre-deploy` backup and chmods the result `600`
 
-- [ ] **Step 2: Run tests and verify failure**
+- [x] **Step 2: Run tests and verify failure**
 
 Run: `python3 -m unittest discover -s scripts/setup/tests -p 'test_searxng_mcp_contract.py' -v`
 Expected: FAIL on missing merge-helper usage and old manifest references.
 
-- [ ] **Step 3: Implement config preservation**
+- [x] **Step 3: Implement config preservation**
 
 Update `write_config_yaml` to:
 - render `config.shared.yaml` plus the per-instance overlay with `envsubst`
@@ -131,12 +131,12 @@ Update `write_config_yaml` to:
 
 Remove the MCP JSON merge, `jq` validation, and Google Workspace MCP deletion. Keep `assert_no_embedded_secrets` on the merged file. Add a warning when a `google_workspace` MCP remains configured but its auth file is absent.
 
-- [ ] **Step 4: Run tests and verify pass**
+- [x] **Step 4: Run tests and verify pass**
 
 Run: `python3 -m unittest discover -s scripts/setup/tests -p 'test_searxng_mcp_contract.py' -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/deploy/deploy-agent-config.sh scripts/setup/tests/test_searxng_mcp_contract.py
@@ -155,25 +155,25 @@ git commit -m "feat: preserve UI-owned Hermes config during deploy"
 - Consumes: `scripts/lib/hermes_state_merge.py env`.
 - Produces: `write_runtime_env <dest>` that updates repo-managed keys and preserves all others.
 
-- [ ] **Step 1: Write the failing contract test**
+- [x] **Step 1: Write the failing contract test**
 
 Update `test_runtime_env_carries_generation_settings_without_logging_secrets` to assert the deploy script calls `hermes_state_merge.py env` with `--managed-key` entries for each repo-managed key, including `HERMES_IMAGE_GEN_MODEL` and `OPENCODE_GO_BASE_URL`, and calls `write_runtime_env` for both agents.
 
-- [ ] **Step 2: Run test and verify failure**
+- [x] **Step 2: Run test and verify failure**
 
 Run: `python3 -m unittest discover -s scripts/setup/tests -p 'test_agent_media_provider_contract.py' -v`
 Expected: FAIL because deploy still rewrites `.env` with heredocs.
 
-- [ ] **Step 3: Implement `.env` merge**
+- [x] **Step 3: Implement `.env` merge**
 
 Replace both heredocs with one `write_runtime_env` function. Pass only key names to the helper; values come from the exported deploy environment. Preserve UI-added keys. Keep `chmod 600`.
 
-- [ ] **Step 4: Run test and verify pass**
+- [x] **Step 4: Run test and verify pass**
 
 Run: `python3 -m unittest discover -s scripts/setup/tests -p 'test_agent_media_provider_contract.py' -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/deploy/deploy-agent-config.sh scripts/setup/tests/test_agent_media_provider_contract.py
@@ -192,18 +192,18 @@ git commit -m "feat: merge Hermes runtime env keys"
 **Interfaces:**
 - Produces: `HERMES_DASHBOARD_PUBLIC_URL` for both agents; Justin backup paths for `plugins` and `mcp-tokens`.
 
-- [ ] **Step 1: Write failing assertions**
+- [x] **Step 1: Write failing assertions**
 
 Add tests that both Hermes services set `HERMES_DASHBOARD_PUBLIC_URL` to their exact public hostname, and that backup includes:
 - `/mnt/ssd/qacey/hermes/justin/data/plugins`
 - `/mnt/ssd/qacey/hermes/justin/data/mcp-tokens`
 
-- [ ] **Step 2: Run tests and verify failure**
+- [x] **Step 2: Run tests and verify failure**
 
 Run: `python3 -m unittest discover -s scripts/setup/tests -p 'test_backup_contract.py' -v`
 Expected: FAIL on missing paths and env var.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Add:
 ```yaml
@@ -211,12 +211,12 @@ HERMES_DASHBOARD_PUBLIC_URL: "https://hermes.${QACEY_DOMAIN}"
 ```
 and the Annique equivalent. Add the two backup paths with `add_restic_path`.
 
-- [ ] **Step 4: Run tests and verify pass**
+- [x] **Step 4: Run tests and verify pass**
 
 Run: `python3 -m unittest discover -s scripts/setup/tests -p 'test_backup_contract.py' -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add docker-compose.platform.yml scripts/maintenance/backup.sh scripts/setup/tests/test_backup_contract.py
@@ -238,7 +238,7 @@ git commit -m "feat: configure Hermes OAuth callback and UI-state backup"
 **Interfaces:**
 - Produces: operational contract explaining UI-owned state, Git-owned state, migration order, rollback, backup, and MCP seed policy.
 
-- [ ] **Step 1: Write the failing doc contract test**
+- [x] **Step 1: Write the failing doc contract test**
 
 Assert the new doc and deploy README mention:
 - UI owns `mcp_servers`, `plugins`, skills, OAuth tokens
@@ -248,21 +248,21 @@ Assert the new doc and deploy README mention:
 - migration order: back up, deploy merge, verify UI state, then re-add MCPs
 - do not let the agent silently add MCPs
 
-- [ ] **Step 2: Run test and verify failure**
+- [x] **Step 2: Run test and verify failure**
 
 Run: `python3 -m unittest discover -s scripts/setup/tests -p 'test_hermes_ui_ownership_contract.py' -v`
 Expected: FAIL because the doc is absent.
 
-- [ ] **Step 3: Write the docs and update stale comments**
+- [x] **Step 3: Write the docs and update stale comments**
 
 Clarify that Google Workspace auth material is still deployed, but the MCP entry is UI-owned and must be disabled in the UI when auth is absent. Update the deploy README to remove stale skill-sync claims.
 
-- [ ] **Step 4: Run test and verify pass**
+- [x] **Step 4: Run test and verify pass**
 
 Run: `python3 -m unittest discover -s scripts/setup/tests -p 'test_hermes_ui_ownership_contract.py' -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add docs/operations/hermes-ui-ownership.md scripts/deploy/README.md services/agent/config.shared.yaml secrets/README.md .env.example scripts/setup/tests/test_hermes_ui_ownership_contract.py
@@ -276,12 +276,12 @@ git commit -m "docs: define Hermes UI ownership contract"
 **Files:**
 - No new files.
 
-- [ ] **Step 1: Run the full setup suite**
+- [x] **Step 1: Run the full setup suite**
 
 Run: `python3 -m unittest discover -s scripts/setup/tests -v`
 Expected: PASS, 0 failures.
 
-- [ ] **Step 2: Run the Hermes-adjacent suites**
+- [x] **Step 2: Run the Hermes-adjacent suites**
 
 Run:
 ```bash
@@ -290,12 +290,12 @@ python3 -m unittest discover -s services/agent/google_workspace_mcp/tests -v
 ```
 Expected: PASS, 0 failures.
 
-- [ ] **Step 3: Shell syntax check**
+- [x] **Step 3: Shell syntax check**
 
 Run: `bash -n scripts/deploy/deploy-agent-config.sh && bash -n scripts/maintenance/backup.sh`
 Expected: exit 0.
 
-- [ ] **Step 4: Rehearse merge with temp data**
+- [x] **Step 4: Rehearse merge with temp data**
 
 Run the helper against temp files and confirm:
 - UI `mcp_servers` and `plugins` survive
@@ -304,7 +304,7 @@ Run the helper against temp files and confirm:
 - managed `.env` keys update
 - output mode is `600`
 
-- [ ] **Step 5: Commit any final fixes**
+- [x] **Step 5: Commit any final fixes**
 
 ```bash
 git add -A
