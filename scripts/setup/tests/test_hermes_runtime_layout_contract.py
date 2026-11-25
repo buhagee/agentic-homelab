@@ -30,6 +30,16 @@ class HermesRuntimeLayoutContractTests(unittest.TestCase):
         self.assertIn('mkdir -p "$HOME"', text)
         self.assertIn('ln -s /opt/data/skills "$HOME/skills"', text)
 
+    def test_agent_default_workspace_is_inside_data(self):
+        text = START.read_text(encoding="utf-8")
+        self.assertIn('WORKSPACE="${HERMES_WORKSPACE_DIR:-/opt/data/workspace}"', text)
+        self.assertIn('mkdir -p "$WORKSPACE"', text)
+        self.assertIn('cd "$WORKSPACE"', text)
+
+        for service in ("hermes-justin", "hermes-annique"):
+            block = compose_block(service)
+            self.assertIn("HERMES_WORKSPACE_DIR: /opt/data/workspace", block, service)
+
     def test_both_agents_mount_home_and_skills_under_data(self):
         for service, user in (("hermes-justin", "justin"), ("hermes-annique", "annique")):
             block = compose_block(service)
@@ -61,6 +71,7 @@ class HermesRuntimeLayoutContractTests(unittest.TestCase):
         text = BACKUP.read_text(encoding="utf-8")
         self.assertIn("/mnt/ssd/qacey/hermes/justin/home", text)
         self.assertIn("/mnt/ssd/qacey/hermes/justin/data/skills", text)
+        self.assertIn("/mnt/ssd/qacey/hermes/justin/data/workspace", text)
 
     def test_docs_describe_the_layout_and_migration(self):
         text = DOC.read_text(encoding="utf-8")
