@@ -87,8 +87,9 @@ The image keeps a compatibility symlink:
 /opt/hermes/home/.hermes -> /opt/data/home
 ```
 
-That makes file links from older chats resolve inside the managed root. The
-symlink is read-only compatibility, not a writable path.
+`start.sh` also links `$HOME/skills` to `/opt/data/skills` when that path is
+free. Together they make file links from older chats resolve inside the managed
+root. The links are read-only compatibility, not writable paths.
 
 Do not point `HERMES_DASHBOARD_FILES_ROOT` at `/` or `/opt`. That exposes
 `/opt/hermes`, the venv, and core source to the file API.

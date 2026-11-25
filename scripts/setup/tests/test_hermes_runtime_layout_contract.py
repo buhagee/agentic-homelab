@@ -28,6 +28,7 @@ class HermesRuntimeLayoutContractTests(unittest.TestCase):
         text = START.read_text(encoding="utf-8")
         self.assertIn('export HOME="${HOME:-/opt/data/home}"', text)
         self.assertIn('mkdir -p "$HOME"', text)
+        self.assertIn('ln -s /opt/data/skills "$HOME/skills"', text)
 
     def test_both_agents_mount_home_and_skills_under_data(self):
         for service, user in (("hermes-justin", "justin"), ("hermes-annique", "annique")):

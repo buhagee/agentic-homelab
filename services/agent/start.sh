@@ -16,6 +16,11 @@ umask 077
 export HOME="${HOME:-/opt/data/home}"
 mkdir -p "$HOME"
 
+# Compatibility bridge for old chat links that used ~/.hermes/skills.
+if [[ ! -e "$HOME/skills" ]]; then
+	ln -s /opt/data/skills "$HOME/skills"
+fi
+
 LOCK_DIR="${HOME}/.local/state/hermes/gateway-locks"
 if [[ -d "$LOCK_DIR" ]]; then
 	find "$LOCK_DIR" -type d -exec chmod 700 {} +
