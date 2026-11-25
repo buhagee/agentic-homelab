@@ -186,6 +186,12 @@ class AutoDeployDryRunTests(unittest.TestCase):
         self.assertIn("-newermt '-2 hours'", text)
         self.assertNotIn("-newermt '-15 minutes'", text)
 
+    def test_retired_skillclaw_container_is_removed(self):
+        text = SCRIPT.read_text(encoding="utf-8")
+        self.assertIn("RETIRED_CONTAINERS=(skillclaw)", text)
+        self.assertIn('docker rm -f "$name"', text)
+        self.assertIn("retire_containers", text)
+
 
 if __name__ == "__main__":
     unittest.main()
