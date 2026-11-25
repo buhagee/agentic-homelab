@@ -64,6 +64,17 @@ bash scripts/start.sh
 Real secrets belong in `secrets/.env`. Traefik and OAuth templates are rendered
 from `secrets/.env` at start time; rendered files are gitignored.
 
+## Optional native Codex development
+
+[Codex on the home server](docs/operations/codex.md) adds a dedicated development
+account, independent project clones, a pinned runtime installer and an opt-in
+remote-access unit. Start with the installer's dry-run; installation, sign-in and
+activation are separate steps. Existing projects under the operator's home can be
+live deployment checkouts and are not granted to the new account.
+
+The current Compose services stay in place during this pilot. Merges to `main`
+still trigger the existing deployment pipeline; Codex setup is never invoked by it.
+
 ## Security posture
 
 - No credentials in git. Secret values live in `secrets/.env` on the host.

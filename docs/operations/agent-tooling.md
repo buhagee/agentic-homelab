@@ -4,6 +4,20 @@
 - **Scope:** global `opencode-v2` config and project-local additions.
 - **Stored at:** `infrastructure/opencode/config/`, bind-mounted read-only.
 
+## Native Codex pilot
+
+The [native Codex runbook](codex.md) defines a separate development account and
+independent clones. Its runtime is opt-in; this OpenCode configuration and its
+Docker-only MCP URLs are not automatically imported. Personal-agent MCP migration,
+Hermes retirement and OpenChamber adoption are separate follow-up work.
+
+Use Superpowers for implementation and explicitly selected Gstack lenses for
+planning/review. Install a native Codex workflow once under the dedicated account;
+do not combine a plugin-owned install with manual duplicate registrations. The
+existing `setup-gstack-lenses.sh` is OpenCode-specific. Native Gstack curation must
+check actual discovered skill names and exclude the router/upgrade and other
+non-approved skills, including nested runtime copies.
+
 ## Global core
 
 | Role | Tool | Stars | Notes |
