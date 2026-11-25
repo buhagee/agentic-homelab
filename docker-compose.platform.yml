@@ -516,10 +516,6 @@ services:
       - mnemo-postgres
     environment:
       GATEWAY_ALLOW_ALL_USERS: "false"
-      OPENCODE_GO_API_KEY: ${OPENCODE_GO_API_KEY}
-      OPENCODE_GO_BASE_URL: ${OPENCODE_GO_BASE_URL}
-      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
-      OPENAI_API_KEY: ${OPENROUTER_API_KEY}
       API_SERVER_ENABLED: "true"
       API_SERVER_KEY: ${HERMES_API_KEY_JUSTIN}
       # API binds only to hermes-peer; no host port or shared-network listener.
@@ -527,9 +523,15 @@ services:
       API_SERVER_PORT: "8642"
       HERMES_UID: ${HERMES_UID}
       HERMES_GID: ${HERMES_GID}
+      # Keep HOME and all writable state under HERMES_HOME so the dashboard
+      # file browser can read files emitted in chat.
+      HOME: /opt/data/home
+      HERMES_HOME: /opt/data
+      HERMES_WRITE_SAFE_ROOT: /opt/data
       # Direct dashboard (Hermex 2.0 / hermes.${QACEY_DOMAIN}) — public bind
       # requires an auth provider; the basic-auth plugin reads these two.
       HERMES_DASHBOARD_HOST: 0.0.0.0
+      HERMES_DASHBOARD_PUBLIC_URL: "https://hermes.${QACEY_DOMAIN}"
       HERMES_DASHBOARD_BASIC_AUTH_USERNAME: ${HERMES_DASHBOARD_USERNAME_JUSTIN}
       HERMES_DASHBOARD_BASIC_AUTH_PASSWORD: ${HERMES_DASHBOARD_PASSWORD_JUSTIN}
       # Restrict terminal execution to the local container namespace only.
@@ -547,10 +549,11 @@ services:
       # Rendered config.yaml, runtime .env, workbooks, and Google Workspace
       # auth material are all deployed into the per-user /opt/data volume.
       - /mnt/ssd/qacey/hermes/justin/data:/opt/data
-      - /mnt/ssd/qacey/hermes/justin/home:/opt/hermes/home/.hermes
+      # Tool HOME (git/ssh/npm/uv, MCP state) stays inside the managed root.
+      - /mnt/ssd/qacey/hermes/justin/home:/opt/data/home
       # U-07: skill volumes (shared ro; per-user rw for SkillClaw)
-      - /mnt/ssd/qacey/hermes/skills/shared:/opt/hermes/home/.hermes/skills/shared:ro
-      - /mnt/ssd/qacey/hermes/skills/justin:/opt/hermes/home/.hermes/skills/justin:rw
+      - /mnt/ssd/qacey/hermes/skills/shared:/opt/data/skills/shared:ro
+      - /mnt/ssd/qacey/hermes/skills/justin:/opt/data/skills/justin:rw
     networks:
       qacey-proxy: {}
       qacey-internal: {}
@@ -607,10 +610,6 @@ services:
       - mnemo-postgres
     environment:
       GATEWAY_ALLOW_ALL_USERS: "false"
-      OPENCODE_GO_API_KEY: ${OPENCODE_GO_API_KEY}
-      OPENCODE_GO_BASE_URL: ${OPENCODE_GO_BASE_URL}
-      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
-      OPENAI_API_KEY: ${OPENROUTER_API_KEY}
       API_SERVER_ENABLED: "true"
       API_SERVER_KEY: ${HERMES_API_KEY_ANNIQUE}
       # API binds only to hermes-peer; no host port or shared-network listener.
@@ -618,9 +617,15 @@ services:
       API_SERVER_PORT: "8642"
       HERMES_UID: ${HERMES_UID}
       HERMES_GID: ${HERMES_GID}
+      # Keep HOME and all writable state under HERMES_HOME so the dashboard
+      # file browser can read files emitted in chat.
+      HOME: /opt/data/home
+      HERMES_HOME: /opt/data
+      HERMES_WRITE_SAFE_ROOT: /opt/data
       # Direct dashboard (Hermex 2.0 / hermes-annique.${QACEY_DOMAIN}) — public
       # bind requires an auth provider; the basic-auth plugin reads these two.
       HERMES_DASHBOARD_HOST: 0.0.0.0
+      HERMES_DASHBOARD_PUBLIC_URL: "https://hermes-annique.${QACEY_DOMAIN}"
       HERMES_DASHBOARD_BASIC_AUTH_USERNAME: ${HERMES_DASHBOARD_USERNAME_ANNIQUE}
       HERMES_DASHBOARD_BASIC_AUTH_PASSWORD: ${HERMES_DASHBOARD_PASSWORD_ANNIQUE}
       # U-06: rtk-hermes — enable rewrites for both local and docker backends
@@ -636,10 +641,11 @@ services:
       # Rendered config.yaml, runtime .env, workbooks, and Google Workspace
       # auth material are all deployed into the per-user /opt/data volume.
       - /mnt/ssd/qacey/hermes/annique/data:/opt/data
-      - /mnt/ssd/qacey/hermes/annique/home:/opt/hermes/home/.hermes
+      # Tool HOME (git/ssh/npm/uv, MCP state) stays inside the managed root.
+      - /mnt/ssd/qacey/hermes/annique/home:/opt/data/home
       # U-07: skill volumes (shared ro; per-user rw for SkillClaw)
-      - /mnt/ssd/qacey/hermes/skills/shared:/opt/hermes/home/.hermes/skills/shared:ro
-      - /mnt/ssd/qacey/hermes/skills/annique:/opt/hermes/home/.hermes/skills/annique:rw
+      - /mnt/ssd/qacey/hermes/skills/shared:/opt/data/skills/shared:ro
+      - /mnt/ssd/qacey/hermes/skills/annique:/opt/data/skills/annique:rw
     networks:
       qacey-proxy: {}
       qacey-internal: {}
