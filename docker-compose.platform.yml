@@ -528,6 +528,7 @@ services:
       HOME: /opt/data/home
       HERMES_HOME: /opt/data
       HERMES_WRITE_SAFE_ROOT: /opt/data
+      HERMES_WORKSPACE_DIR: /opt/data/workspace
       # Direct dashboard (Hermex 2.0 / hermes.${QACEY_DOMAIN}) — public bind
       # requires an auth provider; the basic-auth plugin reads these two.
       HERMES_DASHBOARD_HOST: 0.0.0.0
@@ -622,6 +623,7 @@ services:
       HOME: /opt/data/home
       HERMES_HOME: /opt/data
       HERMES_WRITE_SAFE_ROOT: /opt/data
+      HERMES_WORKSPACE_DIR: /opt/data/workspace
       # Direct dashboard (Hermex 2.0 / hermes-annique.${QACEY_DOMAIN}) — public
       # bind requires an auth provider; the basic-auth plugin reads these two.
       HERMES_DASHBOARD_HOST: 0.0.0.0

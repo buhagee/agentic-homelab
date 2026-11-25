@@ -21,6 +21,11 @@ if [[ ! -e "$HOME/skills" ]]; then
 	ln -s /opt/data/skills "$HOME/skills"
 fi
 
+# Agent work must live under HERMES_HOME so the dashboard can preview it.
+WORKSPACE="${HERMES_WORKSPACE_DIR:-/opt/data/workspace}"
+mkdir -p "$WORKSPACE"
+cd "$WORKSPACE"
+
 LOCK_DIR="${HOME}/.local/state/hermes/gateway-locks"
 if [[ -d "$LOCK_DIR" ]]; then
 	find "$LOCK_DIR" -type d -exec chmod 700 {} +

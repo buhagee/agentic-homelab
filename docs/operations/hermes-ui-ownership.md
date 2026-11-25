@@ -91,6 +91,7 @@ Everything the dashboard may preview must live under `HERMES_HOME=/opt/data`.
     shared/          # SkillClaw shared library, read-only to the agent
     justin/          # per-agent library
   home/              # HOME for tools and MCP subprocesses
+  workspace/         # default agent working directory
 ```
 
 The agent container sets:
@@ -99,7 +100,16 @@ The agent container sets:
 HOME=/opt/data/home
 HERMES_HOME=/opt/data
 HERMES_WRITE_SAFE_ROOT=/opt/data
+HERMES_WORKSPACE_DIR=/opt/data/workspace
 ```
+
+`start.sh` runs `cd /opt/data/workspace` before starting the dashboard and
+gateway. New chats therefore default to a previewable path.
+
+Existing sessions keep their old working directory. If a chat still points at
+`/opt/hermes`, start a new chat or select `/opt/data/workspace` in the workspace
+picker. Files that already exist under `/opt/hermes` are application files, not
+agent work; move user files to `/opt/data/workspace` or `/opt/data/sandbox`.
 
 `HERMES_DASHBOARD_FILES_ROOT` stays unset. The managed root is then
 `/opt/data`, and `~/.hermes`, skills, plugin state, and chat files are all
@@ -134,6 +144,7 @@ New layout:
 /opt/data                         # Hermes state
 /opt/data/home                    # HOME state
 /opt/data/skills                  # skills
+/opt/data/workspace               # default working directory
 ```
 
 Before recreating the containers:
@@ -249,6 +260,7 @@ Justin's offsite backup includes:
 - `data/plugins`
 - `data/mcp-tokens`
 - `data/skills`
+- `data/workspace`
 - `data/memories`
 - `data/profiles`
 - `data/google-workspace`
