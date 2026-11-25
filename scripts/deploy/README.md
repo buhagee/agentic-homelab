@@ -5,45 +5,56 @@ Scripts for deploying configurations and services to production.
 ## Hermes Agent Deployment
 
 ### deploy-agent-config.sh
-Deploys Hermes agent configuration, skills, and MCP servers.
+Deploys the Git-owned Hermes base config and merges live UI-owned state.
+
+**Ownership:**
+- **UI owns:** MCP servers, plugins, skills, OAuth tokens.
+- **Git owns:** base config, images, networks, routes, personas, provider keys.
+- **Deploy merges. It never overwrites UI-owned state.**
+
+See `docs/operations/hermes-ui-ownership.md` for the full contract.
 
 **What it does:**
-- Merges `config.shared.yaml` + per-user MCP JSON → `config.yaml`
+- Renders `config.shared.yaml` + the per-instance overlay
+- Preserves live `mcp_servers` and `plugins` blocks from `/opt/data/config.yaml`
+- Writes `config.yaml.pre-deploy` before replacing the live config
+- Merges repo-managed keys into `.env`; UI keys and comments stay
 - Deploys `SOUL.md` persona files
-- Syncs skills (shared + per-user + wondelai community)
-- Initializes mnemo-postgres database
-- Deploys configured provider settings
-- Loads `/.env` and overlays `/secrets/.env` when present for deploy-time secret substitution
+- Initializes the mnemo-postgres database
+- Loads `/.env` and overlays `/secrets/.env` when present
+
+`services/agent/mcp-servers*.json` are **reference only**. Deploy never reads
+them. Re-add MCPs through the Hermes dashboard at
+`https://hermes.${QACEY_DOMAIN}` or `https://hermes-annique.${QACEY_DOMAIN}`.
 
 **Usage:**
 ```bash
-bash deploy/deploy-agent-config.sh [--force]
+bash deploy/deploy-agent-config.sh
 ```
 
-**Flags:**
-- `--force` or `-f`: Overwrite custom skills from repo (default: preserve evolved skills)
-
 **When to run:**
-- After changing Hermes configuration
-- After updating MCP server definitions
-- After adding new skills
-- After Hermes version upgrade
+- After changing the Git-owned base config
+- After changing provider keys
+- After a Hermes version upgrade
 
-The shared `mcp_searxng` entry is an internal Streamable HTTP client for the
-`mcp-searxng` Compose service. The service listens only on `qacey-internal` at
-`http://mcp-searxng:3000/mcp`; it has no host port or Traefik route. Start or
-update it through the normal platform Compose workflow after changing
-`MCP_SEARXNG_IMAGE` in `versions.env`. The image must retain both a verified
-release tag and immutable digest; never replace it with `latest`.
+Do not run it to add an MCP or plugin. Use the Hermes UI.
 
 **Targets:**
 - `hermes-justin` container
 - `hermes-annique` container
 
-**Skill deployment:**
-- **Shared skills**: Always synced with `--ignore-existing` (SkillClaw can evolve)
-- **Wondelai skills**: Always synced with `--ignore-existing` (450+ community skills)
-- **Custom skills**: Only overwritten with `--force` flag
+**Skill and plugin state:**
+- Managed through the Hermes UI.
+- Plugin files and dependency environments live under `/opt/data`.
+- Do not pip-install plugins into `/opt/hermes/.venv`.
+
+The shared `mcp_searxng` entry is a reference for the internal Streamable HTTP
+client for the `mcp-searxng` Compose service. The service listens only on
+`qacey-internal` at `http://mcp-searxng:3000/mcp`; it has no host port or Traefik
+route. The UI owns the live entry. Start or update the service through the
+normal platform Compose workflow after changing `MCP_SEARXNG_IMAGE` in
+`versions.env`. The image must retain both a verified release tag and immutable
+digest; never replace it with `latest`.
 
 ## Oracle VPS Deployment
 
@@ -88,26 +99,31 @@ bash deploy/oracle-deploy.sh
 
 ### Hermes Agent Updates
 ```bash
-# 1. Update config files
+# 1. Update Git-owned base config or provider keys
 nano services/agent/config.shared.yaml
-nano services/agent/mcp-servers.shared.json
+nano .env
 
-# 2. Deploy to agents
+# 2. Add or change MCPs and plugins in the Hermes UI
+#    https://hermes.${QACEY_DOMAIN}
+#    https://hermes-annique.${QACEY_DOMAIN}
+
+# 3. Deploy only when base config changed
 bash deploy/deploy-agent-config.sh
 
-# 3. Restart agents
+# 4. Restart agents
 docker restart hermes-justin hermes-annique
 
-# 4. Verify
-docker logs -f hermes-justin
+# 5. Verify UI state survived
+docker exec hermes-justin /opt/hermes/.venv/bin/hermes mcp list
+docker exec hermes-justin /opt/hermes/.venv/bin/hermes plugins list
 ```
 
 ### SearXNG MCP rollback
 
-To roll back this migration, restore the previous `mcp_searxng` stdio object
-from Git, run `bash scripts/deploy/deploy-agent-config.sh`, and recreate both
-Hermes containers. Remove or stop `mcp-searxng` separately if required. Do not
-change the SearXNG image, settings, data, or JSON format during this rollback.
+Roll back the `mcp_searxng` service through the normal Compose workflow. The
+live Hermes MCP entry is UI-owned: if the service changes, update or disable the
+entry in the Hermes dashboard. Do not edit `mcp-servers.shared.json` expecting
+deploy to apply it; that file is reference only.
 
 ### Oracle VPS Updates
 ```bash
@@ -140,9 +156,13 @@ docker exec hermes-justin cat /opt/data/config.yaml
 # Check logs
 docker logs hermes-justin
 
-# Redeploy with force
-bash deploy/deploy-agent-config.sh --force
+# Restore the previous merged config if the new base is bad
+cp -p /mnt/ssd/qacey/hermes/justin/data/config.yaml.pre-deploy \
+  /mnt/ssd/qacey/hermes/justin/data/config.yaml
 ```
+
+`config.yaml.pre-deploy` lives beside the live config in each agent's data
+directory.
 
 ### Oracle VPS services not accessible
 ```bash
