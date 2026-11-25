@@ -65,10 +65,10 @@ class RenovatePolicyTests(unittest.TestCase):
     def test_platform_automerge_is_enabled(self):
         self.assertTrue(self.config["platformAutomerge"])
 
-    def test_top_level_automerge_is_disabled(self):
-        self.assertFalse(self.config["automerge"])
+    def test_top_level_automerge_is_enabled(self):
+        self.assertTrue(self.config["automerge"])
 
-    def test_stateful_packages_never_automerge(self):
+    def test_stateful_packages_automerge_patch_and_minor(self):
         stateful_rules = [
             rule
             for rule in self.config["packageRules"]
@@ -77,9 +77,24 @@ class RenovatePolicyTests(unittest.TestCase):
         self.assertTrue(stateful_rules)
         matched = set()
         for rule in stateful_rules:
-            self.assertFalse(rule.get("automerge", False))
+            self.assertTrue(rule.get("automerge", False))
             matched.update(rule.get("matchPackageNames", []))
         self.assertEqual(matched, STATEFUL)
+
+    def test_stateful_major_rule_overrides_stateful_automerge(self):
+        rules = self.config["packageRules"]
+        stateful_index = next(
+            index
+            for index, rule in enumerate(rules)
+            if "stateful" in rule.get("addLabels", [])
+        )
+        major_index = next(
+            index
+            for index, rule in enumerate(rules)
+            if rule.get("matchUpdateTypes") == ["major"]
+        )
+        self.assertLess(stateful_index, major_index)
+        self.assertFalse(rules[major_index].get("automerge", False))
 
     def test_major_updates_never_automerge(self):
         major_rules = [
