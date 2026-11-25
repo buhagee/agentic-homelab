@@ -41,17 +41,6 @@ class AgentMediaProviderContractTests(unittest.TestCase):
         self.assertNotIn("--managed-key", self.deploy)
         self.assertNotIn("FAL_KEY=", self.deploy)
         self.assertNotIn("TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN_", self.compose)
-        proxy = (REPO_ROOT / "services" / "skillclaw" / "proxy-entrypoint.sh").read_text(encoding="utf-8")
-        self.assertIn("sed 's/", proxy)
-        self.assertIn("api_key:", proxy)
-        self.assertIn("***", proxy)
-
-    def test_skillclaw_uses_opencode_go_relay(self):
-        self.assertIn("OPENCODE_GO_BASE_URL=https://opencode.ai/zen/go/v1", self.env)
-        self.assertIn("SKILLCLAW_MODEL=deepseek-v4-flash", self.env)
-        self.assertIn("OPENAI_API_KEY: ${OPENCODE_GO_API_KEY}", self.compose)
-        self.assertIn("OPENAI_BASE_URL: ${OPENCODE_GO_BASE_URL}", self.compose)
-        self.assertIn("EVOLVE_MODEL: ${SKILLCLAW_MODEL}", self.compose)
 
     def test_hermes_base_image_is_pinned(self):
         versions = (REPO_ROOT / "versions.env").read_text(encoding="utf-8")

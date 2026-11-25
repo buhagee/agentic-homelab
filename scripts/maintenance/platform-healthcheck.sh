@@ -30,7 +30,7 @@ EXPECTED=(
   mcp-academic-papers mcp-crawl4ai mcp-intervals mcp-searxng
   mnemo-postgres
   ollama opencode-docker-control opencode-v2
-  paperless paperless-postgres paperless-redis scrutiny searxng skillclaw
+  paperless paperless-postgres paperless-redis scrutiny searxng
   traefik vaultwarden wireguard-home
 )
 OPTIONAL=(hermes-sandbox hermes-sandbox-oauth2-proxy mcp-paperless)

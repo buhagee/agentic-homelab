@@ -68,7 +68,6 @@ digest; never replace it with `latest`.
 Deploys the Oracle VPS stack (monitoring + proxy).
 
 **What it does:**
-- Builds SkillClaw image (if needed)
 - Pulls Docker images
 - Starts containers:
   - `oracle-traefik` (TLS termination)

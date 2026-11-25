@@ -85,7 +85,7 @@ STATEFUL=0
 if grep -qx 'docker-compose.platform.yml' <<< "$CHANGED"; then
   STATEFUL=1
 fi
-if grep -Eq '^services/(agent|skillclaw)/' <<< "$CHANGED"; then
+if grep -Eq '^services/agent/' <<< "$CHANGED"; then
   STATEFUL=1
 fi
 

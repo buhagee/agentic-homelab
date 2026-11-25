@@ -33,7 +33,6 @@ class ResourceHardeningContractTests(unittest.TestCase):
             "opencode-docker-control",
             "traefik",
             "crowdsec",
-            "skillclaw",
             "mnemo-postgres",
             "mcp-paperless",
             "mcp-crawl4ai",

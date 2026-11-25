@@ -38,14 +38,6 @@ docker build \
   "${PLATFORM_DIR}/services/agent"
 success "qacey/hermes-agent:local built (hermes-agent ${HERMES_VERSION})."
 
-# ── Build SkillClaw evolve server (U-07: builds from AMAP-ML/SkillClaw source) ─
-info "Building qacey/skillclaw:local (SkillClaw evolve server)..."
-docker build \
-  -f "${PLATFORM_DIR}/services/skillclaw/Dockerfile" \
-  -t qacey/skillclaw:local \
-  "${PLATFORM_DIR}/services/skillclaw"
-success "qacey/skillclaw:local built."
-
 # ── Pull latest images ────────────────────────────────────────────────────────
 info "Pulling latest images..."
 "${COMPOSE_CMD[@]}" pull --ignore-pull-failures 2>/dev/null || true
