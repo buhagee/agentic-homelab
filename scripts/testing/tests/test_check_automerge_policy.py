@@ -25,6 +25,15 @@ class AutomergePolicyTests(unittest.TestCase):
             )
         )
 
+    def test_renovate_stateful_touching_compose_fails(self):
+        self.assertIsNotNone(
+            evaluate(
+                "renovate[bot]",
+                ["stateful"],
+                ["versions.env", "docker-compose.platform.yml"],
+            )
+        )
+
     def test_human_author_is_not_constrained(self):
         self.assertIsNone(
             evaluate("alice", [], ["docker-compose.platform.yml"])

@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
-"""Guard Renovate's review bypass: bot PRs may only merge stateless updates.
+"""Guard Renovate's review bypass: bot PRs may only change versions.env.
 
+Renovate now automerges patch and minor updates for both stateless and stateful
+services. Major updates remain manual except for the documented OpenCode rules.
 Humans are not constrained here; their PRs still need a green CI run and a merge
 through the protected branch rules.
 """
@@ -19,12 +21,6 @@ def is_renovate_bot(author: str) -> bool:
 def evaluate(author: str, labels, changed_files):
     """Return a failure reason, or None when the PR may merge."""
     if not is_renovate_bot(author):
-        return None
-
-    label_set = {label.strip().lower() for label in labels if label.strip()}
-    if "stateless" not in label_set:
-        # Unlabelled bot PRs are manual updates: a human may merge them after
-        # review. Renovate only automerges the stateless groups.
         return None
 
     files = {path.strip() for path in changed_files if path.strip()}
