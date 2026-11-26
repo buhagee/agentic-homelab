@@ -38,13 +38,17 @@ outside-review tools. Use project-local Playwright CLI/skills for headless brows
 work when required; this server has no graphical desktop.
 
 Edits, builds, tests and development networking within the authorised workspace
-are normal development work. For administrator operations, prepare the exact
-command and purpose for the operator's own sudo terminal. Do not request passwords
-in chat, run agents as root, grant Docker or privileged device groups, or copy the
-operator's personal credentials. Keep tokens out of source, logs and handoffs.
+are normal development work. For administrator operations, use `qacey-dev-ops`
+(including `qacey-dev-ops sudo -- <cmd>` authenticated via OpenChamber's private
+`openchamber_secret` card when enabled in `/etc/qacey-dev-ops/policy.json`) or
+prepare the exact command and purpose for the operator's own sudo terminal. Do
+not request passwords in plain-text chat, run agents as root, grant Docker or
+privileged device groups, or copy the operator's personal credentials. Keep
+tokens out of source, logs and handoffs.
 
-For host diagnostics, use `qacey-dev-ops list` to discover the operator-approved
-targets. `qacey-dev-ops status gateway adapter` reports the development gateway's
+For host diagnostics and ops, use `qacey-dev-ops list`, `qacey-dev-ops monitor`,
+`qacey-dev-ops storage`, and `qacey-dev-ops prune` as enabled by policy.
+`qacey-dev-ops status gateway adapter` reports the development gateway's
 adapter status when granted. Check the gateway and the native units separately.
 
 Qacey deployments publish the baseline. Applying configuration, upgrading native

@@ -23,13 +23,16 @@ Ordinary edits, builds, tests and development networking within the dedicated
 projects root are allowed within the authorized task. Use repository source/search
 directly when an OpenCode-specific index or plugin is unavailable.
 
-Privileged native-host changes use the operator's administrative terminal or the
-explicitly enrolled `qacey-dev-deploy` path. Automatic deployment must use its
-verified root-owned source, preserve stopped services and active coding work, and
-keep native failures separate from platform rollback. The coding account receives
-no sudo or Docker access. Never request a password in chat, copy the operator's
-credential store, or run Codex as root. Setup and runtime tests use temporary
-state; they do not create host accounts or activate services.
+Privileged native-host changes use the operator's administrative terminal, the
+explicitly enrolled `qacey-dev-deploy` path, or `qacey-dev-ops` when enabled in
+`/etc/qacey-dev-ops/policy.json` (including `qacey-dev-ops sudo -- <cmd>` gated
+by the operator's password through OpenChamber's private `openchamber_secret`
+card). Automatic deployment must use its verified root-owned source, preserve
+stopped services and active coding work, and keep native failures separate from
+platform rollback. The coding account has no Docker group membership. Never
+request a password in plain-text chat or copy the operator's credential store.
+Setup and runtime tests use temporary state; they do not create host accounts
+or activate services.
 
 ## Verification and operations
 

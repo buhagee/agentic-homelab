@@ -149,11 +149,13 @@ class OperationsTests(unittest.TestCase):
         settings = ops.validate_settings(dict(self.settings, prune=True))
         with patch.object(ops, "mutation_lock", return_value=9) as lock, \
              patch.object(ops, "rate_limit"), \
-             patch.object(ops, "capture", side_effect=["builder reclaimed 1GB", "images reclaimed 2GB"]), \
+             patch.object(ops, "capture", side_effect=["builder reclaimed 1GB", "images reclaimed 2GB"]) as call, \
              patch.object(ops.os, "close") as close:
             result = ops.dispatch({"action": "prune"}, settings, self.operator)
         self.assertIn("builder reclaimed 1GB", result)
         self.assertIn("images reclaimed 2GB", result)
+        for invocation in call.call_args_list:
+            self.assertLessEqual(invocation.kwargs["timeout"], 280)
         lock.assert_called_once_with(self.operator)
         close.assert_called_once_with(9)
 
