@@ -1,5 +1,5 @@
 # docker-compose.oracle.yml
-# Qacey Oracle VPS stack — reverse proxy + monitoring + security
+# Qacey Oracle VPS stack — reverse proxy + security
 #
 # Architecture:
 #   Client → wireguard-oracle (ports 80/443/51820)
@@ -99,26 +99,6 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # ── Uptime Kuma (external uptime monitoring) ─────────────────────────────────
-  uptime-kuma:
-    image: louislam/uptime-kuma:${UPTIME_KUMA_VERSION}
-    container_name: uptime-kuma
-    restart: unless-stopped
-    mem_limit: 256m
-    ports:
-      - "127.0.0.1:3001:3001"
-    volumes:
-      - uptime-kuma-data:/app/data
-    networks:
-      - oracle_net
-    security_opt:
-      - no-new-privileges:true
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-
   # ── CrowdSec (behavioural IDS + AppSec WAF — Traefik + SSH protection) ─────
   # Reads oracle-traefik logs via Docker acquisition + SSH via journald.
   # LAPI on oracle_net at crowdsec-oracle:8080.
@@ -166,9 +146,6 @@ services:
   # cs-oracle-bouncer removed in U-12 — replaced by maxlerebourg/crowdsec-bouncer-traefik-plugin
   # which runs inside the oracle-traefik process (no separate container needed).
   # Plugin config is in infrastructure/traefik/oracle/dynamic/passthrough.yml.
-
-volumes:
-  uptime-kuma-data:
 
 networks:
   oracle_net:

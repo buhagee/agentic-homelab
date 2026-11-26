@@ -35,14 +35,12 @@ state; they do not create host accounts or activate services.
 
 ```sh
 python3 -m unittest discover -s scripts/setup/tests -v
-python3 -m unittest discover -s services/opencode-docker-control/tests -v
-python3 -m unittest discover -s services/agent/google_workspace_mcp/tests -v
 ```
 
 Run production smoke/deployment scripts only with explicit approval and the
-required host environment. For the existing OpenCode stack, use the approved Docker controller for service
-operations, with approval for every call. Do not mount a Docker socket into
-OpenCode or bypass the controller's host-approved snapshot.
+required host environment. Where enrolled, use the allowlisted development
+operations broker for approved service operations. Do not grant Docker socket
+access to the development account.
 
 ## Documentation
 

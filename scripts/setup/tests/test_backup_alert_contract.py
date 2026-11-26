@@ -75,15 +75,10 @@ class BackupAlertContractTests(unittest.TestCase):
             "/mnt/ssd/qacey/paperless",
             "/mnt/ssd/qacey/traefik/certs",
             "/mnt/ssd/qacey/adguard/conf",
-            "/mnt/ssd/qacey/hermes/skills",
-            "/mnt/ssd/qacey/hermes/users",
-            "/mnt/ssd/qacey/hermes/wife",
-            "/mnt/ssd/qacey/hermes/annique",
-            "/mnt/ssd/qacey/hermes/justin/data/memories",
         ):
             self.assertIn(path, text)
         self.assertNotIn("/mnt/ssd/qacey/postgres\n", text)
-        self.assertNotIn("/mnt/ssd/qacey/hermes\n", text)
+        self.assertNotIn("/mnt/ssd/qacey/hermes", text)
         self.assertNotIn("opencode-v2", text)
 
     def test_retention_and_repo_guard(self):

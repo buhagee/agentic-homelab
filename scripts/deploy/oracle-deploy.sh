@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 # scripts/deploy/oracle-deploy.sh
-# Deploy the Qacey Oracle VPS stack (reverse proxy + monitoring).
+# Deploy the Qacey Oracle VPS stack (reverse proxy).
 #
 # Architecture:
 #   wireguard-oracle  — WireGuard server; home server connects as peer
 #   oracle-traefik    — TLS termination for the configured domain; forwards via WireGuard
-#   uptime-kuma       — External uptime monitoring
 #
 # Run ON the Oracle VPS:
 #   sudo bash scripts/deploy/oracle-deploy.sh
@@ -152,7 +151,7 @@ chmod 600 "$WG_CONF"
 success "  WireGuard server config written to $WG_CONF"
 
 # ── 4. Stop any pre-existing named containers ─────────────────────────────────
-for cname in oracle-traefik uptime-kuma wireguard-oracle pangolin gerbil crowdsec-oracle cs-oracle-bouncer; do
+for cname in oracle-traefik wireguard-oracle pangolin gerbil crowdsec-oracle cs-oracle-bouncer; do
   if docker ps -a --format '{{.Names}}' | grep -q "^${cname}$"; then
     info "Removing existing container: $cname..."
     docker rm -f "$cname"
@@ -258,6 +257,14 @@ sleep 5
 info "Starting remaining oracle stack services..."
 docker compose -f "$COMPOSE_FILE" --env-file "$VERSIONS_FILE" --env-file "$ENV_FILE" up -d
 
+# Retire only the old Compose container and preserve its named data volume.
+retired_container="$(docker ps -aq --filter 'name=^/uptime-kuma$' \
+  --filter label=com.docker.compose.project=qacey \
+  --filter label=com.docker.compose.service=uptime-kuma)"
+if [[ -n "$retired_container" ]]; then
+  docker rm -f "$retired_container"
+fi
+
 echo ""
 success "Oracle stack deployed"
 echo ""
@@ -303,7 +310,6 @@ echo "     (should show home server peer with a recent handshake)"
 echo ""
 echo "  3. Cloudflare DNS cutover:"
 echo "     - Add wildcard A record: *.${QACEY_DOMAIN} → ${ORACLE_IP:-<oracle-public-ip>} (grey cloud)"
-echo "     - platform-status.${QACEY_DOMAIN} already points here — no change needed"
 echo ""
 echo "  4. Verify external access:"
 echo "     curl -I https://vault.${QACEY_DOMAIN}"

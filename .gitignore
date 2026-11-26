@@ -56,14 +56,6 @@ scripts/immich-bulk-upload.env
 /.superpowers/
 /docs/superpowers/
 
-# ── U-16: Skills managed via WebUI, not in repo ──────────────────────────
-services/agent/skills/*
-!services/agent/skills/.gitkeep
-!services/agent/skills/justin/
-!services/agent/skills/justin/**
-!services/agent/skills/shared/
-!services/agent/skills/shared/**
-
 # Rendered from .tmpl with secrets/.env
 infrastructure/traefik/config/dynamic/middlewares.yml
 infrastructure/traefik/config/dynamic/adguard.yml

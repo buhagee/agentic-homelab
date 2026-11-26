@@ -77,8 +77,15 @@ class HealthcheckContractTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertIn("MISSING: vaultwarden", result.stdout)
 
-    def test_stopped_optional_sandbox_is_silent(self):
+    def test_stopped_optional_service_is_silent(self):
         result = run_with_fake_docker(stopped_optional_output())
+        self.assertEqual(result.stdout.strip(), "")
+
+    def test_stopped_legacy_containers_are_silent(self):
+        legacy = ("hermes-justin", "hermes-annique", "opencode-v2", "opencode-docker-control", "mnemo-postgres")
+        leftover = "".join(f"{name}\tExited (1) 2 hours ago\n" for name in legacy)
+        result = run_with_fake_docker(all_up_output() + leftover)
+        self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.strip(), "")
 
     def test_docker_failure_reports_docker_error(self):

@@ -35,8 +35,6 @@ class AutoDeployDryRunTests(unittest.TestCase):
         (self.repo / "versions.env").write_text(
             "TRAEFIK_VERSION=v3.7.14\n"
             "PAPERLESS_VERSION=3.3.0\n"
-            "HERMES_VERSION=v0.22.7\n"
-            "OPENCODE_V2_VERSION=2.3.2\n"
         )
         (self.repo / "docker-compose.platform.yml").write_text("services: {}\n")
         run_git(self.repo, "add", "-A")
@@ -98,31 +96,12 @@ class AutoDeployDryRunTests(unittest.TestCase):
 
     def test_stateful_version_change_is_detected(self):
         sha = self.commit(
-            {"versions.env": "TRAEFIK_VERSION=v3.7.14\nPAPERLESS_VERSION=3.5.1\nHERMES_VERSION=v0.22.7\nOPENCODE_V2_VERSION=2.3.2\n"},
+            {"versions.env": "TRAEFIK_VERSION=v3.7.14\nPAPERLESS_VERSION=3.5.1\n"},
             "bump paperless",
         )
         result = self.run_script("--dry-run", sha)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("stateful=1", result.stdout)
-
-    def test_hermes_version_change_builds_hermes_images(self):
-        sha = self.commit(
-            {"versions.env": "TRAEFIK_VERSION=v3.7.14\nPAPERLESS_VERSION=3.3.0\nHERMES_VERSION=v0.23.2\nOPENCODE_V2_VERSION=2.3.2\n"},
-            "bump hermes",
-        )
-        result = self.run_script("--dry-run", sha)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("stateful=1", result.stdout)
-        self.assertIn("version_builds=hermes-justin hermes-annique", result.stdout)
-
-    def test_opencode_version_change_builds_opencode(self):
-        sha = self.commit(
-            {"versions.env": "TRAEFIK_VERSION=v3.7.14\nPAPERLESS_VERSION=3.3.0\nHERMES_VERSION=v0.22.7\nOPENCODE_V2_VERSION=2.3.3\n"},
-            "bump opencode",
-        )
-        result = self.run_script("--dry-run", sha)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("version_builds=opencode-v2", result.stdout)
 
     def test_compose_change_is_stateful(self):
         sha = self.commit(
@@ -185,12 +164,6 @@ class AutoDeployDryRunTests(unittest.TestCase):
         self.assertIn('*.sqlite3.gz', text)
         self.assertIn("-newermt '-2 hours'", text)
         self.assertNotIn("-newermt '-15 minutes'", text)
-
-    def test_retired_skillclaw_container_is_removed(self):
-        text = SCRIPT.read_text(encoding="utf-8")
-        self.assertIn("RETIRED_CONTAINERS=(skillclaw)", text)
-        self.assertIn('docker rm -f "$name"', text)
-        self.assertIn("retire_containers", text)
 
 
 if __name__ == "__main__":

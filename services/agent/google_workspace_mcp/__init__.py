@@ -1,1 +1,0 @@
-"""Repo-managed Google Workspace MCP server for Hermes agents."""

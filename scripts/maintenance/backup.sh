@@ -142,7 +142,7 @@ append_latest_db_backups() {
   local latest_path
   local stale=()
   local max_age_minutes=$((MAX_DUMP_AGE_HOURS * 60))
-  local prefixes=(immich paperless mnemo_justin mnemo_annique)
+  local prefixes=(immich paperless)
 
   for prefix in "${prefixes[@]}"; do
     latest_path="$({ find "$backup_dir" -maxdepth 1 -type f \
@@ -288,27 +288,6 @@ main() {
     add_restic_path /mnt/ssd/qacey/adguard/conf
     add_restic_path /mnt/ssd/qacey/wireguard
     add_restic_path /mnt/ssd/qacey/homeassistant
-    add_restic_path /mnt/ssd/qacey/hermes/skills
-    add_restic_path /mnt/ssd/qacey/hermes/users
-    add_restic_path /mnt/ssd/qacey/hermes/wife
-    add_restic_path /mnt/ssd/qacey/hermes/annique
-    # Keep Justin's config/memory/profile state, not the multi-gigabyte session
-    # and sandbox history.
-    add_restic_path /mnt/ssd/qacey/hermes/justin/data/config.yaml
-    add_restic_path /mnt/ssd/qacey/hermes/justin/data/.env
-    add_restic_path /mnt/ssd/qacey/hermes/justin/data/SOUL.md
-    add_restic_path /mnt/ssd/qacey/hermes/justin/data/memories
-    add_restic_path /mnt/ssd/qacey/hermes/justin/data/profiles
-    add_restic_path /mnt/ssd/qacey/hermes/justin/data/plugins
-    add_restic_path /mnt/ssd/qacey/hermes/justin/data/mcp-tokens
-    add_restic_path /mnt/ssd/qacey/hermes/justin/data/skills
-    add_restic_path /mnt/ssd/qacey/hermes/justin/data/workspace
-    add_restic_path /mnt/ssd/qacey/hermes/justin/data/kanban.db
-    add_restic_path /mnt/ssd/qacey/hermes/justin/data/response_store.db
-    add_restic_path /mnt/ssd/qacey/hermes/justin/data/google-workspace
-    # Tool HOME: git/ssh/npm/uv state and MCP credentials.
-    add_restic_path /mnt/ssd/qacey/hermes/justin/home
-
     # Platform configuration and secrets. Restic encrypts the repository, so
     # these are protected at rest; keep RESTIC_PASSWORD outside the host.
     add_restic_path "${PLATFORM_DIR}/.env"

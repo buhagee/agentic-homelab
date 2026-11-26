@@ -16,11 +16,8 @@ Comprehensive platform smoke test.
   - Vaultwarden: /alive endpoint
   - Traefik: dashboard
   - CrowdSec: LAPI health
-  - Hermes: dashboard
-  - Hermes Agent direct dashboard (Justin + Annique): HTTPS route authentication required
   - AdGuard: web UI
   - Ollama: local embedding model API (`/api/tags`, loopback port 11434)
-  - OpenCode V2: HTTPS route responds with authentication required
 
 **Usage:**
 ```bash
@@ -45,30 +42,6 @@ bash testing/smoke-test.sh
 All smoke tests passed!
 ```
 
-### smoke-test-api.sh
-API-specific smoke tests.
-
-**What it tests:**
-- API endpoints with authentication
-- Response codes and content
-- API key validation
-- Rate limiting
-- Error handling
-
-**Usage:**
-```bash
-bash testing/smoke-test-api.sh
-```
-
-**Prerequisites:**
-- `IMMICH_API_KEY` in `.env`
-- Services running
-
-**When to run:**
-- After API changes
-- After OAuth configuration
-- Before API-dependent deployments
-
 ## Test Workflow
 
 ### After Platform Start
@@ -85,27 +58,14 @@ bash testing/smoke-test.sh
 # 4. If tests pass, platform is ready
 ```
 
-### After Deployment
-```bash
-# 1. Deploy changes
-bash deploy/deploy-agent-config.sh
+### After deployment
 
-# 2. Restart affected services
-docker restart hermes-justin
+Run `bash scripts/testing/smoke-test.sh` from the operator checkout to verify
+the running platform.
 
-# 3. Run smoke tests
-bash testing/smoke-test.sh
+### Continuous integration
 
-# 4. Verify specific service
-curl -f https://photos.example.com/api/server/ping
-```
-
-### Continuous Integration
-```bash
-# Run in CI pipeline
-bash testing/smoke-test.sh || exit 1
-bash testing/smoke-test-api.sh || exit 1
-```
+Run `bash scripts/testing/run-all.sh` for tests that use local fixtures.
 
 ## Test Coverage
 
@@ -113,10 +73,8 @@ bash testing/smoke-test-api.sh || exit 1
 - ✅ Traefik (proxy)
 - ✅ Immich (photos)
 - ✅ Vaultwarden (vault)
-- ✅ Hermes agents
 - ✅ CrowdSec (IDS)
 - ✅ AdGuard (DNS)
-- ✅ Uptime Kuma (monitoring)
 
 ### Not Tested (Manual Verification)
 - OAuth login flows (requires browser)

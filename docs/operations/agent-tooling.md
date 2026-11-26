@@ -1,8 +1,7 @@
-# OpenCode tooling pick
+# Agent tooling
 
 - **Date:** 2026-11-21
-- **Scope:** global `opencode-v2` config and project-local additions.
-- **Stored at:** `infrastructure/opencode/config/`, bind-mounted read-only.
+- **Scope:** shared native development, project-local additions, and legacy Docker OpenCode configuration.
 
 ## Shared native Codex/OpenChamber
 
@@ -10,8 +9,7 @@ The [native Codex runbook](codex.md) defines a separate development account and
 independent clones. Its runtime is opt-in; this OpenCode configuration and its
 Docker-only MCP URLs are not automatically imported. The
 [shared development runbook](development.md) adds native OpenChamber on the same
-account. Personal-agent MCP migration and Hermes retirement remain separate
-follow-up work. Share portable `.agents/skills`, repository guidance and the
+account. Use the shared MCP baseline for integrations that need to work in both clients. Share portable `.agents/skills`, repository guidance and the
 nonsecret MCP baseline; keep plugin runtimes, models, approvals, authentication
 and history native to each harness. OpenChamber UI additions stay OpenCode-local
 until deliberately promoted. Baseline sync preserves unmanaged fields and rejects
@@ -27,7 +25,7 @@ existing `setup-gstack-lenses.sh` is OpenCode-specific. Native Gstack curation m
 check actual discovered skill names and exclude the router/upgrade and other
 non-approved skills, including nested runtime copies.
 
-## Global core
+## Legacy Docker OpenCode tools
 
 | Role | Tool | Stars | Notes |
 |---|---|---:|---|

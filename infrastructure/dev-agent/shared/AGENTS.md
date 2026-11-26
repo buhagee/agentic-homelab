@@ -8,8 +8,23 @@ Git metadata, or treat them as development worktrees.
 Codex and OpenCode share project files, this guidance and portable skills in
 `~/.agents/skills` or repository `.agents/skills`. Keep model choices, permissions,
 runtime plugins, login state and conversation history in each client's own
-configuration. Promote portable MCP definitions to the versioned shared baseline
-and apply them with `qacey-dev sync`; do not copy authentication stores.
+configuration. Do not copy authentication stores.
+
+Before installing a skill, MCP server, or plugin, check the shared locations,
+the repository's configuration, and the relevant client's configuration for an
+existing installation. Reuse the existing pinned version and keep one owner per
+skill. When reporting an installation, include its version or revision, location,
+and the clients or repositories it serves.
+
+- Put account-wide portable skills in `~/.agents/skills` and project-specific
+  portable skills in the repository's `.agents/skills`. An existing reviewed
+  source checkout can be linked from the appropriate skills directory.
+- Put MCP definitions intended for both clients in Qacey's versioned
+  `infrastructure/dev-agent/shared/mcp.json`. Preview with `qacey-dev sync` and
+  apply with `qacey-dev sync --apply` after the updated baseline is published.
+- Install client-specific plugins and hooks through that client's native
+  configuration. Use the project's package manager for project dependencies
+  and the operator's administrative terminal for system packages.
 
 Keep one active writer per worktree. For simultaneous tasks, create separate
 branches/worktrees from a development clone. When switching harnesses, leave a

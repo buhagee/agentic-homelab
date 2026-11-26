@@ -55,17 +55,6 @@ class CleanupContractTests(unittest.TestCase):
         health = (REPO_ROOT / "scripts" / "maintenance" / "platform-healthcheck.sh").read_text(encoding="utf-8")
         self.assertNotIn("nextcloud", health.lower())
 
-    def test_rtk_is_removed_from_hermes(self):
-        self.assertFalse((REPO_ROOT / "services" / "agent" / "task.Dockerfile").exists())
-        for relative in (
-            "services/agent/Dockerfile",
-            "services/agent/config.shared.yaml",
-            "scripts/build.sh",
-            "scripts/deploy/README.md",
-        ):
-            text = (REPO_ROOT / relative).read_text(encoding="utf-8").lower()
-            self.assertNotIn("rtk", text, relative)
-
     def test_skillclaw_is_removed(self):
         compose = (REPO_ROOT / "docker-compose.platform.yml").read_text(encoding="utf-8")
         self.assertNotIn("skillclaw", compose.lower())
@@ -76,7 +65,6 @@ class CleanupContractTests(unittest.TestCase):
             "scripts/crontab.txt",
             "scripts/build.sh",
             "scripts/setup/first-time-setup.sh",
-            "scripts/deploy/deploy-agent-config.sh",
         ):
             text = (REPO_ROOT / relative).read_text(encoding="utf-8").lower()
             self.assertNotIn("skillclaw", text, relative)
@@ -102,12 +90,6 @@ class CleanupContractTests(unittest.TestCase):
                 r"^[A-Za-z_][A-Za-z0-9_]*=",
                 f".env.example:{lineno} is not KEY=VALUE: {line!r}",
             )
-
-    def test_no_runtime_plugin_installs_into_hermes_venv(self):
-        deploy = (REPO_ROOT / "scripts" / "deploy" / "deploy-agent-config.sh").read_text(encoding="utf-8")
-        self.assertNotIn("hermes-curator-evolver", deploy)
-        self.assertNotIn("uv pip install", deploy.split("Hermes plugins", 1)[-1])
-
 
 if __name__ == "__main__":
     unittest.main()

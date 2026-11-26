@@ -59,23 +59,10 @@ echo -e "${BLUE}── Phase 1: Infrastructure ───────────
 check "Traefik cloudflared port"     "http://localhost:8080/"             "404"
 
 echo ""
-echo -e "${BLUE}── U-04: Hermes Agent ───────────────────────────────────────────${NC}"
-for svc in hermes-justin hermes-annique; do
-  STATE=$(docker inspect --format='{{.State.Status}}' "${svc}" 2>/dev/null || echo "missing")
-  if [[ "${STATE}" == "running" ]]; then
-    echo -e "  ${GREEN}✅${NC} U-04: ${svc} running"
-    PASS=$((PASS+1))
-  else
-    echo -e "  ${RED}❌${NC} U-04: ${svc} running — got ${STATE}"
-    FAIL=$((FAIL+1))
-  fi
-done
-
-echo ""
 echo -e "${BLUE}── Phase 2: Services (U-02) ─────────────────────────────────────${NC}"
 
 # Container running checks
-for svc in immich-server immich-postgres immich-redis vaultwarden searxng mcp-searxng ollama opencode-v2; do
+for svc in immich-server immich-postgres immich-redis vaultwarden searxng mcp-searxng ollama; do
   STATE=$(docker inspect --format='{{.State.Status}}' "${svc}" 2>/dev/null || echo "missing")
   if [[ "${STATE}" == "running" ]]; then
     echo -e "  ${GREEN}✅${NC} U-02: ${svc} running"
@@ -89,16 +76,6 @@ done
 check_contains "Ollama embedding model API" \
   "http://127.0.0.1:11434/api/tags" \
   "nomic-embed-text"
-check "OpenCode HTTPS authentication" \
-  "https://opencode.${DOMAIN}/api/info" \
-  "401"
-check "Hermes dashboard authentication (Justin)" \
-  "https://hermes.${DOMAIN}/api/sessions" \
-  "401"
-check "Hermes dashboard authentication (Annique)" \
-  "https://hermes-annique.${DOMAIN}/api/sessions" \
-  "401"
-
 # HTTP health checks — hit Traefik directly via local port to avoid DNS round-trip
 # through Oracle. Uses the cloudflared entrypoint (:8080) with Host header.
 for url_label in \

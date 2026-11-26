@@ -85,22 +85,10 @@ STATEFUL=0
 if grep -qx 'docker-compose.platform.yml' <<< "$CHANGED"; then
   STATEFUL=1
 fi
-if grep -Eq '^services/agent/' <<< "$CHANGED"; then
-  STATEFUL=1
-fi
-
-VERSION_DIFF=""
-VERSION_BUILDS=()
 if grep -qx 'versions.env' <<< "$CHANGED"; then
   VERSION_DIFF="$(git diff -U0 "$PREVIOUS" "$SHA" -- versions.env || true)"
-  if grep -Eq '^[+-](IMMICH_VERSION|IMMICH_POSTGRES_VERSION|PAPERLESS_VERSION|POSTGRES_VERSION|REDIS_VERSION|HERMES_VERSION|HERMES_WEBUI_VERSION|MNEMO_PGVECTOR_VERSION|VAULTWARDEN_VERSION|HOMEASSISTANT_VERSION|CROWDSEC_VERSION|ADGUARD_VERSION|WIREGUARD_VERSION|OLLAMA_VERSION)=' <<< "$VERSION_DIFF"; then
+  if grep -Eq '^[+-](IMMICH_VERSION|IMMICH_POSTGRES_VERSION|PAPERLESS_VERSION|POSTGRES_VERSION|REDIS_VERSION|VAULTWARDEN_VERSION|HOMEASSISTANT_VERSION|CROWDSEC_VERSION|ADGUARD_VERSION|WIREGUARD_VERSION|OLLAMA_VERSION)=' <<< "$VERSION_DIFF"; then
     STATEFUL=1
-  fi
-  if grep -Eq '^[+-]HERMES_VERSION=' <<< "$VERSION_DIFF"; then
-    VERSION_BUILDS+=("hermes-justin" "hermes-annique")
-  fi
-  if grep -Eq '^[+-](OPENCODE_V2_VERSION|OPENCODE_V2_NODE_VERSION|OPENCODE_V2_PNPM_VERSION)=' <<< "$VERSION_DIFF"; then
-    VERSION_BUILDS+=("opencode-v2")
   fi
 fi
 
@@ -121,7 +109,6 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   echo "previous=$PREVIOUS"
   echo "stateful=$STATEFUL"
   echo "already_deployed=$ALREADY_DEPLOYED"
-  echo "version_builds=$(printf '%s ' "${VERSION_BUILDS[@]}" | sed 's/ $//')"
   echo "changed=$(tr '\n' ' ' <<< "$CHANGED" | sed 's/ $//')"
   exit 0
 fi
@@ -155,10 +142,6 @@ compose() {
     --project-name qacey-platform "$@"
 }
 
-refresh_controller() {
-  python3 scripts/setup/install-opencode-docker-control.py
-}
-
 refresh_native_development() {
   local helper=/usr/local/sbin/qacey-dev-deploy
   # A separate, explicit bootstrap installs this root-owned boundary. Never run
@@ -177,21 +160,30 @@ refresh_native_development() {
 
 # Containers whose services were removed from Compose. Keep this list so the
 # next deploy does not leave an orphan running.
-RETIRED_CONTAINERS=(skillclaw)
+RETIRED_SERVICES=(
+  skillclaw
+  opencode-v2 opencode-docker-control
+  hermes-justin hermes-annique hermes-webui-justin hermes-webui-annique
+  hermes-sandbox hermes-sandbox-oauth2-proxy mnemo-postgres
+)
 
 retire_containers() {
-  local name
-  for name in "${RETIRED_CONTAINERS[@]}"; do
-    if docker inspect "$name" >/dev/null 2>&1; then
-      echo "Removing retired container: $name"
-      docker rm -f "$name" || return 1
-    fi
+  local service ids id
+  for service in "${RETIRED_SERVICES[@]}"; do
+    ids="$(docker ps -aq \
+      --filter label=com.docker.compose.project=qacey-platform \
+      --filter "label=com.docker.compose.service=$service")" || return 1
+    while IFS= read -r id; do
+      [[ -n "$id" ]] || continue
+      echo "Removing retired qacey-platform service: $service ($id)"
+      docker rm -f "$id" || return 1
+    done <<< "$ids"
   done
 }
 
 verify_fresh_dumps() {
   local prefix
-  for prefix in immich paperless mnemo_justin mnemo_annique; do
+  for prefix in immich paperless; do
     if ! find "$DB_BACKUP_DIR" -maxdepth 1 -type f \
       \( -name "${prefix}_*.sql.gz" -o -name "${prefix}_*.sqlite3.gz" \) \
       -newermt '-2 hours' -size +100c 2>/dev/null | grep -q .; then
@@ -201,10 +193,7 @@ verify_fresh_dumps() {
 }
 
 build_images() {
-  COMPOSE_ENV_FILE=.env bash scripts/testing/build-changed-images.sh "$PREVIOUS" "$SHA" || return 1
-  if [[ ${#VERSION_BUILDS[@]} -gt 0 ]]; then
-    compose build "${VERSION_BUILDS[@]}" || return 1
-  fi
+  COMPOSE_ENV_FILE=.env bash scripts/testing/build-changed-images.sh "$PREVIOUS" "$SHA"
 }
 
 deploy_stack() {
@@ -214,11 +203,7 @@ deploy_stack() {
   source scripts/lib/render-config.sh
   load_platform_env "$PWD" || return 1
   render_traefik_dynamic "$PWD" || return 1
-  # shellcheck source=scripts/lib/allowlist.sh
-  source scripts/lib/allowlist.sh
-  require_allowlist "$PWD" || return 1
-  refresh_controller \
-    && compose pull --ignore-buildable \
+  compose pull --ignore-buildable \
     && compose up -d --wait --wait-timeout 300 \
     && bash scripts/maintenance/platform-healthcheck.sh \
     && retire_containers
@@ -227,14 +212,11 @@ deploy_stack() {
 if [[ "$ALREADY_DEPLOYED" -eq 1 ]]; then
   git checkout --force -B main "$SHA"
   echo "=== Qacey deploy no-op: $SHA already deployed ==="
-  refresh_controller
-  retire_containers \
-    && if bash scripts/maintenance/platform-healthcheck.sh; then
-      printf '%s\n' "$SHA" > "$LAST_GOOD_FILE"
-      if ! refresh_native_development; then exit 1; fi
-      exit 0
-    fi
-  die "healthcheck failed for already-deployed SHA $SHA"
+  bash scripts/maintenance/platform-healthcheck.sh || die "healthcheck failed for already-deployed SHA $SHA"
+  retire_containers || die "container retirement failed for already-deployed SHA $SHA"
+  printf '%s\n' "$SHA" > "$LAST_GOOD_FILE"
+  if ! refresh_native_development; then exit 1; fi
+  exit 0
 fi
 
 echo ""

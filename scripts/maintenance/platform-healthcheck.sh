@@ -25,15 +25,14 @@ load_platform_env "$PLATFORM_DIR" || true
 
 EXPECTED=(
   adguard cloudflared crawl4ai crowdsec
-  hermes-annique hermes-justin hermes-webui-annique homeassistant
+  homeassistant
   immich-machine-learning immich-postgres immich-redis immich-server
   mcp-academic-papers mcp-crawl4ai mcp-intervals mcp-searxng
-  mnemo-postgres
-  ollama opencode-docker-control opencode-v2
+  ollama
   paperless paperless-postgres paperless-redis scrutiny searxng
   traefik vaultwarden wireguard-home
 )
-OPTIONAL=(hermes-sandbox hermes-sandbox-oauth2-proxy mcp-paperless)
+OPTIONAL=(mcp-paperless)
 
 declare -A STATUS=()
 if ! docker_output="$(docker ps -a --format $'{{.Names}}\t{{.Status}}' 2>&1)"; then
@@ -77,7 +76,7 @@ done
 for name in "${OPTIONAL[@]}"; do
   status="${STATUS[$name]:-}"
   [[ -z "$status" ]] && continue
-  # A deliberately stopped sandbox must not alert.
+  # Deliberately stopped optional services must not alert.
   [[ "$status" == Exited\ \(0\)* || "$status" == Created* ]] && continue
   check_status "$name" "$status"
 done

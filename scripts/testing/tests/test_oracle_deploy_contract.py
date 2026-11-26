@@ -5,6 +5,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 ORACLE = REPO_ROOT / "scripts" / "deploy" / "oracle-deploy.sh"
 REPAIR = REPO_ROOT / "scripts" / "maintenance" / "crowdsec-repair.sh"
 PASSTHROUGH = REPO_ROOT / "infrastructure" / "traefik" / "oracle" / "dynamic" / "passthrough.yml"
+COMPOSE = REPO_ROOT / "docker-compose.oracle.yml"
 
 
 class OracleDeployContractTests(unittest.TestCase):
@@ -19,6 +20,15 @@ class OracleDeployContractTests(unittest.TestCase):
     def test_passthrough_template_uses_the_domain_variable(self):
         text = PASSTHROUGH.read_text(encoding="utf-8")
         self.assertIn("${QACEY_DOMAIN}", text)
+
+    def test_wildcard_cert_and_home_routes_survive_uptime_kuma_retirement(self):
+        text = PASSTHROUGH.read_text(encoding="utf-8")
+        wildcard = text.split("    wildcard-cert:\n", 1)[1].split("    home-server:\n", 1)[0]
+        self.assertIn('"*.${QACEY_DOMAIN}"', wildcard)
+        self.assertIn("service: noop@internal", wildcard)
+        self.assertIn("service: home-server-svc", text)
+        self.assertNotIn("uptime-kuma", text)
+        self.assertNotIn("uptime-kuma", COMPOSE.read_text(encoding="utf-8"))
 
     def test_repair_renders_the_domain_and_probes_it(self):
         text = REPAIR.read_text(encoding="utf-8")
