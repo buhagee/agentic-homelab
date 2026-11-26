@@ -28,5 +28,9 @@ command and purpose for the operator's own sudo terminal. Do not request passwor
 in chat, run agents as root, grant Docker or privileged device groups, or copy the
 operator's personal credentials. Keep tokens out of source, logs and handoffs.
 
+For host diagnostics, use `qacey-dev-ops list` to discover the operator-approved
+targets. `qacey-dev-ops status gateway adapter` reports the development gateway's
+adapter status when granted. Check the gateway and the native units separately.
+
 Qacey deployments publish the baseline. Applying configuration, upgrading native
 runtimes and restarting coding services are separate deliberate operations.

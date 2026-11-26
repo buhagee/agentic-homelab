@@ -27,7 +27,8 @@ ENV = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "HOME": "/root",
 MUTATIONS = {"start", "stop", "restart"}
 READS = {"status", "logs"}
 SERVICE = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,79}\Z")
-UNIT = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,79}\.service\Z")
+UNIT = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,79}\.(?:service|socket)\Z")
+GATEWAY_SERVICES = {"adapter", "oauth"}
 CID = re.compile(r"[0-9a-f]{64}\Z")
 MAX_BYTES = 65536
 COOLDOWN = 60
@@ -62,8 +63,9 @@ def root_file(path):
     return decode(raw)
 
 def validate_settings(value):
-    if not isinstance(value, dict) or set(value) != {"operator", "containers", "units"}:
-        raise Denied("expected operator, containers and units")
+    required = {"operator", "containers", "units"}
+    if not isinstance(value, dict) or not required <= value.keys() <= required | {"gateway"}:
+        raise Denied("expected operator, containers and units, with optional gateway")
     if not isinstance(value["operator"], str) or not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", value["operator"]):
         raise Denied("invalid operator")
     for category, pattern, allowed in (("containers", SERVICE, READS | MUTATIONS),
@@ -78,6 +80,10 @@ def validate_settings(value):
                 raise Denied("invalid target or action")
             if category == "containers" and name in {"opencode-docker-control", "traefik", "cloudflared"} and set(actions) & MUTATIONS:
                 raise Denied("control and ingress services are not mutable")
+    gateway = value.get("gateway", {})
+    if (not isinstance(gateway, dict) or not gateway.keys() <= GATEWAY_SERVICES
+            or any(actions != ["status"] for actions in gateway.values())):
+        raise Denied("gateway permits status only for adapter and oauth")
     return value
 
 def identity():
@@ -139,15 +145,29 @@ def capture(argv, *, logs=False, timeout=15):
     text = "".join(c if c in "\n\t" or c.isprintable() else "?" for c in text)
     return text + ("\n[output truncated]" if truncated else "")
 
-def container_id(name):
+def container_id(name, *, project="qacey-platform"):
     output = capture([*DOCKER, "container", "ls", "--all", "--no-trunc",
-                      "--filter", "label=com.docker.compose.project=qacey-platform",
+                      "--filter", "label=com.docker.compose.project=" + project,
                       "--filter", "label=com.docker.compose.service=" + name,
                       "--format", "{{.ID}}"])
     ids = output.splitlines()
     if len(ids) != 1 or not CID.fullmatch(ids[0]):
-        raise Denied("expected exactly one existing approved platform container")
+        raise Denied("expected exactly one existing approved container")
     return ids[0]
+
+def gateway_status(target):
+    identifier = container_id(target, project="qacey-dev-web")
+    output = capture([*DOCKER, "container", "inspect", "--format",
+                      "{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}\n"
+                      "{{json .State.Error}}", identifier])
+    status, _, error_json = output.partition("\n")
+    error = json.loads(error_json)
+    if not error:
+        return status
+    if (target == "adapter" and "/run/qacey-dev-proxy" in error
+            and "no such file or directory" in error):
+        return status + " error=proxy-directory-missing"
+    return status + " error=container-start-failed"
 
 def mutation_lock(operator):
     fd = os.open(DEPLOY_LOCK, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
@@ -210,12 +230,17 @@ def dispatch(request, settings, operator):
     if request == {"action": "monitor"}:
         return host_metrics()
     if request == {"action": "list"}:
-        return {"containers": settings["containers"], "units": settings["units"]}
+        return {"containers": settings["containers"], "units": settings["units"],
+                "gateway": settings.get("gateway", {})}
     if not isinstance(request, dict) or set(request) != {"action", "kind", "target"}:
         raise Denied("invalid request")
     action, kind, target = (request[k] for k in ("action", "kind", "target"))
     if not all(isinstance(value, str) for value in (action, kind, target)):
         raise Denied("invalid request")
+    if kind == "gateway":
+        if action != "status" or target not in settings.get("gateway", {}):
+            raise Denied("operation not allowed")
+        return gateway_status(target)
     if kind not in ("containers", "units") or action not in settings[kind].get(target, []):
         raise Denied("operation not allowed")
     if kind == "units":

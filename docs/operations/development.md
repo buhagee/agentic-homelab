@@ -290,6 +290,12 @@ Non-request startup diagnostics remain available.
 
 The Compose project is **`qacey-dev-web`**, separate from `qacey-platform`.
 The main platform's `up --remove-orphans` therefore does not own these containers.
+Gateway provisioning installs `/etc/tmpfiles.d/qacey-dev-proxy.conf` so systemd
+creates the adapter's bind-mount directory during early boot, before Docker
+restores containers. The socket unit creates `backend.sock` later and sets its
+owner and mode. An adapter that starts early can use the socket once it appears.
+To apply the installed directory rule immediately on a running host, use
+`sudo systemd-tmpfiles --create /etc/tmpfiles.d/qacey-dev-proxy.conf`.
 Use the installed helper, which selects the local Docker socket and fixed project
 explicitly, rather than inheriting a shell's `DOCKER_HOST`/`COMPOSE_*` overrides.
 
@@ -315,10 +321,24 @@ does not enable native boot startup; after acceptance, opt in deliberately:
 sudo systemctl enable qacey-codex-tmux.service qacey-openchamber.service qacey-dev-proxy.socket
 ```
 
-Gateway containers use `unless-stopped`, respecting an explicit stop. The native
-processes do not survive a reboot; saved Codex conversations can be resumed after
-starting a new session. Reconnection should never be described as reboot-proof
-process persistence.
+For native Codex remote control, also enable `qacey-codex.service` if it is part
+of your setup. Its login check requires a signed-in Codex account. Gateway
+containers use `unless-stopped`, respecting an explicit stop. Systemd starts new
+native processes after a reboot. Existing tmux sessions end with the old boot,
+and saved Codex conversations can be resumed in a new session.
+
+After a planned reboot, verify startup and then test the HTTPS sign-in flow:
+
+```sh
+for unit in qacey-openchamber.service qacey-dev-proxy.socket qacey-codex-tmux.service; do
+  systemctl is-enabled "$unit"
+  systemctl is-active "$unit"
+done
+systemctl is-active qacey-codex.service  # If native Codex remote control is enabled
+sudo qacey-dev-web status
+sudo -u dev-agent curl --fail --silent --show-error --max-time 5 --output /dev/null \
+  --unix-socket /run/qacey-dev-proxy/backend.sock http://localhost/health
+```
 
 Open the HTTPS hostname on your phone, complete IdP MFA, then authenticate to
 OpenChamber with its UI password. Enrol a passkey if desired. OpenCode chat is
