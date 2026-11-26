@@ -1,3 +1,0 @@
-# Browser OAuth allowlist example.
-# One email per line. Real list: secrets/browser-oauth-allowed-emails.txt.
-user@example.com

@@ -1,2 +1,0 @@
-#!/bin/sh
-exec /usr/bin/python3 -I -B /usr/local/lib/qacey-dev-web/qacey-dev-web.py "$@"

@@ -1,8 +1,0 @@
-approval_policy = "on-request"
-approvals_reviewer = "user"
-sandbox_mode = "workspace-write"
-cli_auth_credentials_store = "file"
-
-[sandbox_workspace_write]
-network_access = true
-writable_roots = [@PROJECTS@]

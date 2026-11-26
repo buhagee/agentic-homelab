@@ -1,3 +1,5 @@
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -20,6 +22,18 @@ class BootstrapContractTests(unittest.TestCase):
 
         self.assertNotIn('deploy-agent-config.sh', script)
         self.assertIn('START_SCRIPT="${PLATFORM_DIR}/scripts/start.sh"', script)
+
+    def test_fresh_setup_generates_secrets_without_a_legacy_opencode_password(self) -> None:
+        script = FIRST_TIME_SETUP.read_text(encoding="utf-8")
+        start = script.index("gen_hex()")
+        end = script.index('success "Secrets generated."', start)
+        with tempfile.TemporaryDirectory() as platform:
+            result = subprocess.run(
+                ["bash", "-euo", "pipefail", "-c", 'PLATFORM_DIR="$1"\nunset OPENCODE_PASSWORD\n'
+                 + script[start:end] + 'test -n "$CRAWL4AI_API_TOKEN"\n', "bootstrap-test", platform],
+                capture_output=True, text=True, check=False,
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_install_backup_resolves_repo_root_and_units_from_repo(self) -> None:
         script = INSTALL_BACKUP.read_text(encoding="utf-8")
