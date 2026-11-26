@@ -9,8 +9,7 @@ This is an **opt-in installation**. Complete the first setup, provider login and
 HTTPS acceptance below, then enroll the environment for managed updates. After
 enrollment, successful platform deployments can update native runtimes, the shared
 baseline and gateway while preserving active work and stopped-service intent.
-Unconfigured hosts receive source files only. Hermes and the existing Docker
-OpenCode remain available during this migration.
+Unconfigured hosts receive source files only.
 
 ## What is shared
 
@@ -124,7 +123,7 @@ major to avoid reusing an incompatible native addon. This is version discipline
 within a user-owned runtime, not an immutable security boundary.
 
 The initial shared MCP is the public Context7 endpoint. Personal Google,
-Intervals.icu and other Hermes integrations are not copied. An enabled MCP can
+Existing integrations must be configured in the native harness that uses them. An enabled MCP can
 make outbound requests according to that client's normal tool policy.
 
 Codex uses its own `qacey-codex login` device flow. OpenCode uses its own provider
@@ -184,7 +183,7 @@ sudo sha256sum "$edge_dir/qacey-dev-edge.yml"
 
 Wait for the file provider to reload, then run the following in Bash on Oracle.
 Set `dev_host` to your development hostname and `control_host` to the existing
-logged platform-status hostname. Use the public HTTPS ingress. The proof header
+logged platform hostname, such as Vaultwarden. Use the public HTTPS ingress. The proof header
 confirms the exact router handled the request, even if the home gateway is still
 offline. The positive control confirms subsequent requests reached the active
 access log and the buffered writer flushed past the development probe.
@@ -193,7 +192,7 @@ access log and the buffered writer flushed past the development probe.
 (
   set -euo pipefail
   dev_host=REPLACE-WITH-DEVELOPMENT-HOST
-  control_host=REPLACE-WITH-PLATFORM-STATUS-HOST
+  control_host=REPLACE-WITH-LOGGED-PLATFORM-HOST
   marker=$(openssl rand -hex 16)
   edge_dir=/opt/qacey/traefik/oracle/dynamic
   edge_log=/opt/qacey/traefik/oracle/logs/access.log
@@ -637,9 +636,7 @@ HTTP/WebSocket proxy. These checks do not prove the live server's deployment.
 - [ ] Pause/resume work, stopped services stay stopped, and native failures leave the platform healthy while preserving an inspectable recovery journal.
 - [ ] Boot/restart policy, explicit sudo handoff and encrypted backup/restore have been exercised.
 
-Only after acceptance should a separate cleanup PR retire Hermes, personal MCPs,
-seed interaction and duplicated configuration. Preserve useful old OpenCode state
-before removing its existing parent directories.
+See the [legacy agent retirement runbook](../../scripts/deploy/README.md#legacy-agent-retirement) for the Docker cutover and retained data.
 
 **Merge consequence:** pushes to `main` and the reconciliation timer can invoke
 the existing platform deployment pipeline. Native updates run after a successful

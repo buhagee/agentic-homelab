@@ -12,9 +12,8 @@ Nightly backup runs at **16:00 UTC**:
 ## What is offsite
 
 - Selected service state under `/mnt/ssd/qacey`, including Vaultwarden,
-  Paperless, Traefik certificates, CrowdSec, AdGuard, WireGuard, Home
-  Assistant, Hermes profiles, and OpenCode state.
-- The newest Immich and Mnemo PostgreSQL dumps plus the Paperless SQLite backup.
+  Paperless, Traefik certificates, CrowdSec, AdGuard, WireGuard, and Home Assistant.
+- The newest Immich PostgreSQL dump plus the Paperless SQLite backup.
 - Platform `.env`, `secrets/.env`, `docker-compose.platform.yml`, and
   `versions.env`.
 - The isolated secret directory `/srv/agentic-homelab-secrets`.
@@ -81,8 +80,7 @@ gunzip -c /mnt/hdd1/qacey/db-backups/immich_YYYY-MM-DD.sql.gz \
   | docker exec -i immich-postgres psql -U immich -d immich
 ```
 
-Use `mnemo` with `mnemo_justin` or `mnemo_annique` for Mnemo. A production
-restore needs the owning application stopped or a maintenance window.
+A production restore needs the owning application stopped or a maintenance window.
 
 ## Paperless is SQLite
 

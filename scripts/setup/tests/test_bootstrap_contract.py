@@ -13,22 +13,13 @@ class BootstrapContractTests(unittest.TestCase):
         script = FIRST_TIME_SETUP.read_text(encoding="utf-8")
 
         self.assertIn('PLATFORM_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"', script)
-        self.assertIn('HERMES_BASE_DIR="/mnt/ssd/qacey/hermes"', script)
-        self.assertNotIn('/opt/qacey/hermes', script)
+        self.assertNotIn('HERMES_BASE_DIR', script)
 
-    def test_first_time_setup_calls_real_deploy_and_start_scripts(self) -> None:
+    def test_first_time_setup_calls_platform_start_without_legacy_agent_setup(self) -> None:
         script = FIRST_TIME_SETUP.read_text(encoding="utf-8")
 
-        self.assertIn('DEPLOY_AGENT_CONFIG_SCRIPT="${PLATFORM_DIR}/scripts/deploy/deploy-agent-config.sh"', script)
+        self.assertNotIn('deploy-agent-config.sh', script)
         self.assertIn('START_SCRIPT="${PLATFORM_DIR}/scripts/start.sh"', script)
-
-    def test_first_time_setup_outputs_google_workspace_placeholders(self) -> None:
-        script = FIRST_TIME_SETUP.read_text(encoding="utf-8")
-
-        self.assertIn('GOOGLE_WORKSPACE_CLIENT_ID=', script)
-        self.assertIn('GOOGLE_WORKSPACE_CLIENT_SECRET=', script)
-        self.assertIn('GOOGLE_WORKSPACE_REFRESH_TOKEN_JUSTIN=', script)
-        self.assertIn('GOOGLE_WORKSPACE_REFRESH_TOKEN_ANNIQUE=', script)
 
     def test_install_backup_resolves_repo_root_and_units_from_repo(self) -> None:
         script = INSTALL_BACKUP.read_text(encoding="utf-8")

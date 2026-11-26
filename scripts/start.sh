@@ -17,10 +17,6 @@ set_platform_compose_env_args "${PLATFORM_DIR}"
 source "${PLATFORM_DIR}/scripts/lib/render-config.sh"
 render_traefik_dynamic "${PLATFORM_DIR}"
 
-# shellcheck source=scripts/lib/allowlist.sh
-source "${PLATFORM_DIR}/scripts/lib/allowlist.sh"
-require_allowlist "${PLATFORM_DIR}"
-
 echo "[INFO] Starting Qacey services..."
 docker compose \
   -f "${PLATFORM_DIR}/docker-compose.platform.yml" \

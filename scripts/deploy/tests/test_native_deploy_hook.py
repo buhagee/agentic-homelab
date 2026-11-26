@@ -51,10 +51,6 @@ class NativeDeployHookTests(unittest.TestCase):
                    "load_platform_env() { return 0; }\n")
         self.write(self.repo / "scripts/lib/render-config.sh",
                    "render_traefik_dynamic() { return 0; }\n")
-        self.write(self.repo / "scripts/lib/allowlist.sh",
-                   "require_allowlist() { return 0; }\n")
-        self.write(self.repo / "scripts/setup/install-opencode-docker-control.py",
-                   "pass\n")
         self.write(self.repo / "scripts/testing/build-changed-images.sh",
                    'printf "build\\n" >> "$TEST_CALLS"\n')
         self.write(self.repo / "scripts/maintenance/platform-healthcheck.sh",
@@ -71,7 +67,21 @@ exec "$@"
 """, executable=True)
         self.write(self.bin / "docker", """#!/bin/bash
 printf 'docker:%s\\n' "$*" >> "$TEST_CALLS"
-if test "$1" = inspect; then exit 1; fi
+if test "$1" = ps; then
+    test "$2" = -aq || exit 97
+    test "$3" = --filter && test "$4" = label=com.docker.compose.project=qacey-platform || exit 97
+    test "$5" = --filter && test "$#" = 6 || exit 97
+    if test "${RETIRED_FIXTURE:-0}" = 1; then
+        case "$6" in
+            label=com.docker.compose.service=skillclaw) echo aaa111 ;;
+            label=com.docker.compose.service=hermes-justin) echo bbb222 ;;
+            label=com.docker.compose.service=opencode-docker-control) echo ccc333 ;;
+            label=com.docker.compose.service=mnemo-postgres) echo ddd444 ;;
+        esac
+    fi
+    exit 0
+fi
+if test "$1" = rm; then exit 0; fi
 if test "$1" = compose; then exit 0; fi
 exit 97
 """, executable=True)
@@ -81,7 +91,7 @@ test "$(cat "$HOME/.local/state/qacey-deploy/last-good")" = "$2" || exit 95
 printf 'native:%s\\n' "$2" >> "$TEST_CALLS"
 exit "$NATIVE_RESULT"
 """, executable=True)
-        for prefix in ("immich", "paperless", "mnemo_justin", "mnemo_annique"):
+        for prefix in ("immich", "paperless"):
             (self.backups / f"{prefix}_fixture.sql.gz").write_bytes(b"x" * 200)
         self.git("add", "-A")
         self.git("commit", "-m", "fixture")
@@ -133,6 +143,17 @@ exit "$NATIVE_RESULT"
         self.assertEqual(events.count("build\n"), 1)
         self.assertIn("alert:Qacey development update failed", events)
         self.assertNotIn("rolling back", self.log.read_text())
+
+    def test_platform_deploy_removes_only_retired_project_containers(self):
+        self.env["RETIRED_FIXTURE"] = "1"
+        result = self.run_deploy(self.new_target())
+        self.assertEqual(result.returncode, 0, result.stderr)
+        events = self.events().splitlines()
+        removes = [line for line in events if line.startswith("docker:rm ")]
+        self.assertEqual(removes, ["docker:rm -f aaa111", "docker:rm -f ccc333", "docker:rm -f bbb222",
+                                   "docker:rm -f ddd444"])
+        self.assertLess(events.index("health"), events.index(removes[0]))
+        self.assertTrue(any(line.startswith("native:") for line in events))
 
     def test_failed_platform_and_rollback_never_invoke_native_updater(self):
         target = self.new_target()

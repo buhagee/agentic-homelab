@@ -16,7 +16,6 @@ STATELESS = {
     "caddy",
 }
 STATEFUL = {
-    "nousresearch/hermes-agent",
     "ghcr.io/immich-app/immich-server",
     "ghcr.io/immich-app/immich-machine-learning",
     "ghcr.io/immich-app/postgres",
@@ -24,7 +23,6 @@ STATEFUL = {
     "postgres",
     "pgvector/pgvector",
     "redis",
-    "ghcr.io/nesquena/hermes-webui",
     "vaultwarden/server",
     "ghcr.io/home-assistant/home-assistant",
     "crowdsecurity/crowdsec",
@@ -105,8 +103,6 @@ class RenovatePolicyTests(unittest.TestCase):
         ]
         self.assertTrue(major_rules)
         for rule in major_rules:
-            if "anomalyco/opencode" in rule.get("matchPackageNames", []):
-                continue
             self.assertFalse(rule.get("automerge", False))
 
     def test_vulnerability_alerts_enabled(self):
@@ -127,35 +123,10 @@ class RenovatePolicyTests(unittest.TestCase):
         )
         self.assertIn('cron: "0 18 * * *"', workflow)
 
-    def opencode_rules(self):
-        return [
-            rule
-            for rule in self.config["packageRules"]
-            if "anomalyco/opencode" in rule.get("matchPackageNames", [])
-        ]
-
-    def test_opencode_patch_automerge_is_immediate(self):
-        rule = next(r for r in self.opencode_rules() if r.get("matchUpdateTypes") == ["patch"])
-        self.assertTrue(rule["automerge"])
-        self.assertNotIn("minimumReleaseAge", rule)
-        self.assertNotIn("platformAutomerge", rule)
-
-    def test_opencode_minor_waits_two_days(self):
-        rule = next(r for r in self.opencode_rules() if r.get("matchUpdateTypes") == ["minor"])
-        self.assertTrue(rule["automerge"])
-        self.assertFalse(rule["platformAutomerge"])
-        self.assertEqual(rule["minimumReleaseAge"], "2 days")
-
-    def test_opencode_major_waits_a_week(self):
-        rule = next(r for r in self.opencode_rules() if r.get("matchUpdateTypes") == ["major"])
-        self.assertTrue(rule["automerge"])
-        self.assertFalse(rule["platformAutomerge"])
-        self.assertEqual(rule["minimumReleaseAge"], "7 days")
-
     def test_ci_runs_the_opencode_smoke_job(self):
         workflow = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
         self.assertIn("opencode-smoke:", workflow)
-        self.assertIn("opencode --version", workflow)
+        self.assertIn("scripts/testing/check-dev-runtime.py", workflow)
 
     def test_ruleset_requires_the_smoke_check(self):
         ruleset = (REPO_ROOT / "scripts" / "setup" / "github-main-ruleset.json").read_text(

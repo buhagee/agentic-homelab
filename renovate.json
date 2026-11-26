@@ -73,7 +73,6 @@
         "docker"
       ],
       "matchPackageNames": [
-        "nousresearch/hermes-agent",
         "ghcr.io/immich-app/immich-server",
         "ghcr.io/immich-app/immich-machine-learning",
         "ghcr.io/immich-app/postgres",
@@ -81,7 +80,6 @@
         "postgres",
         "pgvector/pgvector",
         "redis",
-        "ghcr.io/nesquena/hermes-webui",
         "vaultwarden/server",
         "ghcr.io/home-assistant/home-assistant",
         "crowdsecurity/crowdsec",
@@ -105,46 +103,6 @@
       "addLabels": [
         "major"
       ]
-    },
-    {
-      "matchDatasources": [
-        "github-releases"
-      ],
-      "matchPackageNames": [
-        "anomalyco/opencode"
-      ],
-      "matchUpdateTypes": [
-        "patch"
-      ],
-      "automerge": true
-    },
-    {
-      "matchDatasources": [
-        "github-releases"
-      ],
-      "matchPackageNames": [
-        "anomalyco/opencode"
-      ],
-      "matchUpdateTypes": [
-        "minor"
-      ],
-      "automerge": true,
-      "platformAutomerge": false,
-      "minimumReleaseAge": "2 days"
-    },
-    {
-      "matchDatasources": [
-        "github-releases"
-      ],
-      "matchPackageNames": [
-        "anomalyco/opencode"
-      ],
-      "matchUpdateTypes": [
-        "major"
-      ],
-      "automerge": true,
-      "platformAutomerge": false,
-      "minimumReleaseAge": "7 days"
     }
   ],
   "vulnerabilityAlerts": {

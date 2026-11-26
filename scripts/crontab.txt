@@ -34,7 +34,7 @@
 # =============================================================================
 #
 #   qacey-backup.timer — nightly at 02:00 AEST (16:00 UTC)
-#     1. qacey-db-backup.service  → dumps Immich/Paperless/Mnemo DBs
+#     1. qacey-db-backup.service  → backs up Immich and Paperless databases
 #     2. qacey-backup.service     → rsync SSD+HDD1 → HDD2, then restic → B2
 #     Install:  sudo bash scripts/maintenance/install-backup.sh
 #     Status:   systemctl list-timers qacey-backup.timer

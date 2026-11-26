@@ -22,18 +22,13 @@ class ResourceHardeningContractTests(unittest.TestCase):
     def setUp(self):
         self.text = COMPOSE.read_text(encoding="utf-8")
 
-    def test_unlimited_services_now_have_limits(self):
+    def test_ollama_has_a_memory_limit(self):
         self.assertIn("memory: 8g", service_block(self.text, "ollama"))
-        self.assertIn("memory: 512m", service_block(self.text, "hermes-webui-annique"))
-        self.assertIn("mem_limit: 256m", service_block(self.text, "hermes-sandbox-oauth2-proxy"))
 
     def test_core_services_have_healthchecks(self):
         for name in (
-            "opencode-v2",
-            "opencode-docker-control",
             "traefik",
             "crowdsec",
-            "mnemo-postgres",
             "mcp-paperless",
             "mcp-crawl4ai",
             "mcp-academic-papers",

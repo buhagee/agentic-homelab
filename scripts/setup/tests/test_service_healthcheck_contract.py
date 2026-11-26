@@ -13,14 +13,5 @@ class ServiceHealthcheckContractTests(unittest.TestCase):
         self.assertIn("healthcheck:", block)
         self.assertIn("('127.0.0.1', 11235)", block)
 
-    def test_hermes_webui_checks_its_http_port(self):
-        text = COMPOSE.read_text(encoding="utf-8")
-        block = text.split("  hermes-webui-annique:\n", 1)[1].split(
-            "  # ── Temporary sandbox", 1
-        )[0]
-        self.assertIn("healthcheck:", block)
-        self.assertIn("('127.0.0.1', 8787)", block)
-
-
 if __name__ == "__main__":
     unittest.main()

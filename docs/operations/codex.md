@@ -1,9 +1,8 @@
 # Codex on the home server
 
 This is an opt-in native development environment. It adds a dedicated account,
-private state, a pinned runtime installer and a disabled remote-access unit. It
-does not replace the running OpenCode/Hermes stack. Initial provisioning and login
-are explicit. The shared development runbook describes enrollment for automatic
+private state, a pinned runtime installer and a disabled remote-access unit.
+Initial provisioning and login are explicit. The shared development runbook describes enrollment for automatic
 updates through the platform deployment pipeline after that first setup.
 
 ## Recommended phone access
@@ -368,9 +367,8 @@ preserved.
   files are credentials: include them only in encrypted backup handling. Existing
   platform backup scripts do not automatically cover this new account. Reproducible
   package caches need not consume the existing backup budget.
-- Do not remove Hermes or its data during this pilot. The later cleanup must preserve
-  OpenCode's current state below `/mnt/ssd/qacey/hermes/opencode-v2` before deleting
-  the old parent directory.
+- For the legacy Docker retirement and retained data, see the
+  [deployment runbook](../../scripts/deploy/README.md#legacy-agent-retirement).
 
 ## Verification checklist
 

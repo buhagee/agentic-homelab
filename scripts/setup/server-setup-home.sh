@@ -345,11 +345,7 @@ done
 # SSD directory structure (fast tier: databases, config, runtime)
 SSD_DIRS=(
   /mnt/ssd/qacey/postgres/immich
-  /mnt/ssd/qacey/postgres/mnemo
   /mnt/ssd/qacey/vaultwarden
-  /mnt/ssd/qacey/hermes/justin
-  /mnt/ssd/qacey/hermes/annique
-  /mnt/ssd/qacey/hermes/skills
   /mnt/ssd/qacey/traefik
   /mnt/ssd/qacey/adguard
   /mnt/ssd/qacey/crowdsec

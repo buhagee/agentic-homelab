@@ -144,21 +144,3 @@ jobs:
           node-version: "24"
       - name: Verify native packaging, shared skills, MCP schemas and PTY
         run: python3 scripts/testing/check-dev-runtime.py
-      - name: Build the pinned OpenCode image
-        run: |
-          set -a; . ./versions.env; set +a
-          docker build \
-            --build-arg OPENCODE_V2_VERSION="${OPENCODE_V2_VERSION}" \
-            --build-arg OPENCODE_V2_NODE_VERSION="${OPENCODE_V2_NODE_VERSION}" \
-            --build-arg OPENCODE_V2_PNPM_VERSION="${OPENCODE_V2_PNPM_VERSION}" \
-            -t opencode-smoke services/opencode
-      - name: Check the binary and CLI load
-        run: |
-          set -a; . ./versions.env; set +a
-          version="$(docker run --rm -e HOME=/tmp opencode-smoke opencode --version)"
-          echo "reported: ${version}"
-          case "${version}" in
-            *"${OPENCODE_V2_VERSION}"*) ;;
-            *) echo "version mismatch: expected ${OPENCODE_V2_VERSION}" >&2; exit 1 ;;
-          esac
-          docker run --rm -e HOME=/tmp opencode-smoke opencode --help >/dev/null

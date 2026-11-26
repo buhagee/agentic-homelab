@@ -53,7 +53,6 @@ Database backup script (PostgreSQL dumps plus the Paperless SQLite database).
 **What it backs up:**
 - Immich PostgreSQL database
 - Paperless SQLite database
-- Mnemo PostgreSQL databases
 
 **Usage:**
 ```bash
@@ -138,38 +137,7 @@ bash maintenance/docker-cleanup.sh
 
 **Warning:** This does not remove volumes, but it can remove images and networks used by stopped stacks. Review `--dry-run` first.
 
-### harden-hermes-data.sh
-Restricts Hermes profile/session/memory files and managed script permissions.
-The shared Hermes config keeps ended sessions for 400 days: enough for year-old
-lookup with a small safety buffer, while preventing indefinite DB growth.
-
-**Usage:**
-```bash
-bash maintenance/harden-hermes-data.sh
-```
-
-This operation never deletes data.
-
 ## Service Management
-
-### restart-hermes.sh
-Restarts Hermes agent containers.
-
-**What it does:**
-- Stops `hermes-justin` and `hermes-annique`
-- Waits for clean shutdown
-- Starts containers
-- Verifies they're healthy
-
-**Usage:**
-```bash
-bash maintenance/restart-hermes.sh
-```
-
-**When to run:**
-- After config changes
-- After skill updates
-- When agents are unresponsive
 
 ## Monitoring Setup
 
@@ -236,7 +204,6 @@ bash maintenance/crowdsec-repair.sh
 - `docker-cleanup.sh` — Free up disk space
 
 ### As Needed
-- `restart-hermes.sh` — When agents need restart
 - `crowdsec-repair.sh` — When CrowdSec has issues
 
 ## Repair Scripts
@@ -287,15 +254,4 @@ restic -r b2:qacey-backup-prod snapshots
 
 # Prune old snapshots
 restic -r b2:qacey-backup-prod forget --keep-daily 7 --keep-weekly 4 --prune
-```
-
-### Hermes won't restart
-```bash
-# Check logs
-docker logs hermes-justin
-
-# Force restart
-docker stop hermes-justin hermes-annique
-docker rm hermes-justin hermes-annique
-bash start.sh
 ```

@@ -2,7 +2,7 @@
 """Guard Renovate's review bypass: bot PRs may only change versions.env.
 
 Renovate now automerges patch and minor updates for both stateless and stateful
-services. Major updates remain manual except for the documented OpenCode rules.
+services. Major updates remain manual.
 Humans are not constrained here; their PRs still need a green CI run and a merge
 through the protected branch rules.
 """

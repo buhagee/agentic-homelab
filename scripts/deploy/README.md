@@ -2,76 +2,69 @@
 
 Scripts for deploying configurations and services to production.
 
-## Hermes Agent Deployment
+## Legacy agent retirement
 
-### deploy-agent-config.sh
-Seeds Hermes config, env, and persona only when missing.
+The platform deploy checks the remaining stack before removing retired Compose
+containers. It targets the old Docker OpenCode server and controller, both
+Hermes agents and WebUI services, and the Hermes sandbox and its proxy. Matching
+requires the `qacey-platform` project label and an exact retired service label.
+Native Codex, OpenChamber's OpenCode runtime and the native development gateway
+have separate lifecycles. Retirement also stops the Hermes-only Mnemo database
+and its recurring database dumps. Container removal does not remove bind-mounted
+state or volumes. Keep `/mnt/ssd/qacey/hermes`, `/mnt/ssd/qacey/postgres/mnemo`,
+and any retained database exports until their data is no longer needed. Export any
+legacy data you want to retain independently before the cutover. Existing offsite
+snapshots age out under the standard retention policy.
 
-**Ownership:**
-- **UI owns:** MCP servers, plugins, skills, OAuth tokens, model/provider, API keys, live config.
-- **Git owns:** base config seeds, images, networks, routes, personas, provider keys for other services.
-- **Deploy seeds. It never overwrites UI-owned state.**
+### First home-server cutover
 
-See `docs/operations/hermes-ui-ownership.md` for the full contract.
+The installed runner and reconciliation timer execute the deployment script
+from the current checkout. The old script still builds and provisions the
+legacy agents. Use the new script for this cutover.
 
-**What it does:**
-- Ensures data, home, and skill directories exist
-- Seeds `/opt/data/config.yaml` only when missing
-- Seeds `/opt/data/.env` only when missing
-- Seeds `/opt/data/SOUL.md` only when missing
-- Normalizes skill directory permissions; removes nested `.git` metadata
-- Deploys Google Workspace auth material from platform secrets
-- Initializes the mnemo-postgres database
+Before merging, let any active deployment finish and pause the home runner
+and reconciliation timer from the operator terminal:
 
-Agent `HOME` is `/opt/data/home`. Skills are under `/opt/data/skills`. The
-default working directory is `/opt/data/workspace`. All are inside the
-dashboard managed root.
-
-MCP manifests are archived under `docs/operations/hermes-mcp-reference/`.
-They are **reference only**. Deploy never reads them. Add MCPs through the
-Hermes dashboard at `https://hermes.${QACEY_DOMAIN}` or
-`https://hermes-annique.${QACEY_DOMAIN}`.
-
-**Usage:**
-```bash
-bash deploy/deploy-agent-config.sh
+```sh
+sudo systemctl stop actions.runner.buhagee-homeserver-deploy.homeserver.service
+sudo systemctl stop qacey-deploy-reconcile.timer
 ```
 
-**When to run:**
-- Initial host setup
-- After changing the Git-owned seed for a fresh install
-- After a Hermes version upgrade
+After merging, confirm the operator checkout is clean and has its last-good
+deployment marker. Fast-forward the checkout to load the new deploy and
+database backup scripts, then deploy the merged revision:
 
-Do not run it to change a live model, provider, key, MCP, or plugin. Use the
-Hermes UI.
+```sh
+cd ~/projects/qacey-platform
+git status --short --branch
+test -s "$HOME/.local/state/qacey-deploy/last-good"
+git fetch origin main
+git switch main
+git merge --ff-only origin/main
+bash scripts/deploy/auto-deploy.sh "$(git rev-parse HEAD)"
+```
 
-**Targets:**
-- `hermes-justin` container
-- `hermes-annique` container
+Resume the runner and timer after the deployment succeeds:
 
-**Skill and plugin state:**
-- Managed through the Hermes UI.
-- Plugin files and dependency environments live under `/opt/data`.
-- Do not pip-install plugins into `/opt/hermes/.venv`.
+```sh
+sudo systemctl start actions.runner.buhagee-homeserver-deploy.homeserver.service
+sudo systemctl start qacey-deploy-reconcile.timer
+```
 
-The archived `mcp_searxng` entry is a reference for the internal Streamable HTTP
-client for the `mcp-searxng` Compose service. The service listens only on
-`qacey-internal` at `http://mcp-searxng:3000/mcp`; it has no host port or Traefik
-route. The UI owns the live entry. Start or update the service through the
-normal platform Compose workflow after changing `MCP_SEARXNG_IMAGE` in
-`versions.env`. The image must retain both a verified release tag and immutable
-digest; never replace it with `latest`.
+After deployment, verify the removed service names are absent from
+`docker ps -a --filter label=com.docker.compose.project=qacey-platform` in the
+operator terminal. Disable stale external monitors or routes for the retired
+hostnames if they were configured outside this repository.
 
 ## Oracle VPS Deployment
 
 ### oracle-deploy.sh
-Deploys the Oracle VPS stack (monitoring + proxy).
+Deploys the Oracle VPS reverse proxy and security services.
 
 **What it does:**
 - Pulls Docker images
 - Starts containers:
   - `oracle-traefik` (TLS termination)
-  - `uptime-kuma` (monitoring)
   - `wireguard-oracle` (tunnel server)
   - `crowdsec-oracle` (IDS)
   - `cs-traefik-bouncer-oracle` (bouncer)
@@ -96,37 +89,15 @@ bash deploy/oracle-deploy.sh
 
 **Services deployed:**
 - Traefik (ports 80, 443)
-- Uptime Kuma (port 3001, internal)
 - WireGuard (port 51820 UDP)
 - CrowdSec (internal)
 
+The first Oracle deploy after this change removes the retired Uptime Kuma
+container and its HTTPS route. Its named data volume is retained. To silence
+Kuma before the Oracle deploy, run `sudo docker stop uptime-kuma` on the Oracle
+VPS. This stops all notifications sent by Kuma.
+
 ## Deployment Workflow
-
-### Hermes Agent Updates
-```bash
-# 1. Change live agent config in the Hermes UI
-#    model, provider, API keys, MCPs, plugins, skills
-#    https://hermes.${QACEY_DOMAIN}
-#    https://hermes-annique.${QACEY_DOMAIN}
-
-# 2. Deploy only for infrastructure or a fresh seed
-bash deploy/deploy-agent-config.sh
-
-# 3. Restart agents when needed
-docker restart hermes-justin hermes-annique
-
-# 4. Verify UI state survived
-docker exec hermes-justin /opt/hermes/.venv/bin/hermes mcp list
-docker exec hermes-justin /opt/hermes/.venv/bin/hermes plugins list
-docker exec hermes-justin /opt/hermes/.venv/bin/hermes config get model
-```
-
-### SearXNG MCP rollback
-
-Roll back the `mcp_searxng` service through the normal Compose workflow. The
-live Hermes MCP entry is UI-owned: if the service changes, update or disable the
-entry in the Hermes dashboard. The archived manifest is reference only; editing
-it does not change a deployment.
 
 ### Oracle VPS Updates
 ```bash
@@ -139,7 +110,7 @@ bash deploy/oracle-deploy.sh
 
 # 3. Verify
 docker ps
-curl -I https://status.example.com
+curl -I https://vault.example.com
 ```
 
 ## Safety
@@ -150,19 +121,6 @@ curl -I https://status.example.com
 - **Logging**: All output logged to stdout
 
 ## Troubleshooting
-
-### Hermes agent won't start after deploy
-```bash
-# Check config syntax
-docker exec hermes-justin cat /opt/data/config.yaml
-
-# Check logs
-docker logs hermes-justin
-```
-
-Deploy does not keep a live `.pre-deploy` copy anymore. Restore the latest
-`/opt/data` backup, or remove `config.yaml` while the container is stopped and
-let the next deploy reseed it. Removing live config loses UI changes.
 
 ### Oracle VPS services not accessible
 ```bash

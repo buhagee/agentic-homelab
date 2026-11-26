@@ -51,18 +51,6 @@ class PublicHygieneTests(unittest.TestCase):
             "versions.env must survive the public export",
         )
 
-    def test_start_requires_allowlist_from_secrets(self):
-        text = (REPO_ROOT / "scripts" / "lib" / "allowlist.sh").read_text(encoding="utf-8")
-        self.assertIn("secrets/browser-oauth-allowed-emails.txt", text)
-        start = (REPO_ROOT / "scripts" / "start.sh").read_text(encoding="utf-8")
-        self.assertIn("require_allowlist", start)
-
-    def test_compose_enforces_the_allowlist_file(self):
-        text = (REPO_ROOT / "docker-compose.platform.yml").read_text(encoding="utf-8")
-        self.assertNotIn("--email-domain=*", text)
-        self.assertIn("secrets/browser-oauth-allowed-emails.txt", text)
-        self.assertIn("create_host_path: false", text)
-
     def test_traefik_healthcheck_requires_rendered_middleware(self):
         text = (REPO_ROOT / "docker-compose.platform.yml").read_text(encoding="utf-8")
         self.assertIn("/dynamic/middlewares.yml", text)

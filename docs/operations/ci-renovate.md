@@ -53,8 +53,7 @@ required: with a single maintainer GitHub cannot require self-approval, so the
 gate is CI plus the no-direct-push rule.
 
 Renovate automerges patch and minor updates for both `stateless` and `stateful`
-services. Major updates remain manual, except for the documented OpenCode
-release rules. The `automerge-policy` job enforces that every Renovate PR only
+services. Major updates remain manual. The `automerge-policy` job enforces that every Renovate PR only
 changes `versions.env`.
 
 Stateful patch/minor updates still may include migrations. The checks prove the
@@ -107,24 +106,18 @@ branch-protection bypass actor; it must still satisfy approvals and checks.
 - Stateless `patch` and `minor`: labelled `stateless` and automerged.
 - Stateful packages: labelled `stateful`. `patch` and `minor` automerge.
   Major updates are labelled `major` and stay manual. This includes Immich,
-  Paperless, PostgreSQL, pgvector, Redis, Hermes, Vaultwarden, Home Assistant,
+  Paperless, PostgreSQL, pgvector, Redis, Vaultwarden, Home Assistant,
   CrowdSec, AdGuard, WireGuard and Ollama.
-- Major updates: manual, labelled `major`, except the OpenCode release rules.
-- OpenCode: patch automerges immediately; minor waits 2 days; major waits
-  7 days.
+- Major updates: manual, labelled `major`.
 - Security alerts are enabled and follow the same rules.
 
-`HERMES_VERSION` and `MNEMO_PGVECTOR_VERSION` are deliberately not annotated:
-the first is a Dockerfile build arg that the version PR cannot validate, and
-the second is a major alias that needs a `pg_upgrade`. Bump both manually.
-
-`OPENCODE_V2_VERSION` is tracked from the `anomalyco/opencode` GitHub v2
-release line. Its Dockerfile fetches the matching `SHA256SUMS` asset, so a
-version-only Renovate PR is buildable. The Node and pnpm pins remain manual.
-
-A stateless PR should show the `stateless` label. A stateful patch/minor shows
-`stateful` and automerges. A major PR shows `major` and stays manual, except the
-OpenCode rules.
+The `opencode-smoke` required check validates native development packaging.
+Renovate tracks annotated values in `versions.env`, including the native
+gateway's Docker images. Review native executable version and checksum changes
+in `infrastructure/codex/release.json` and
+`infrastructure/dev-agent/release.json` and update OpenChamber's lockfile when
+its package changes. [Managed native deployments](development.md#managed-updates-through-qacey)
+apply those reviewed changes to enrolled hosts when idle.
 
 ## Automerge path
 
@@ -132,8 +125,6 @@ OpenCode rules.
 2. It adds the `stateless` or `stateful` label.
 3. CI runs the required checks.
 4. GitHub auto-merge merges when every check is green.
-5. OpenCode minor and major use Renovate-side merging after their release-age
-   delay.
 
 The `automerge-policy` job fails any Renovate PR that changes files outside
 `versions.env`.
@@ -144,8 +135,6 @@ Major updates of stateful services need a maintenance window and a fresh
 database backup. The PR checks prove the image exists and the config resolves;
 they do not prove the service migrates cleanly. Review the upstream release
 notes, take a backup, then merge.
-
-OpenCode majors are the documented exception: they automerge after 7 days.
 
 ## Verification
 

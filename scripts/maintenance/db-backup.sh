@@ -97,9 +97,6 @@ echo "Backing up Paperless SQLite database..."
 dump_sqlite "/mnt/ssd/qacey/paperless/data/db.sqlite3" \
   "$BACKUP_DIR/paperless_$DATE.sqlite3.gz"
 
-echo "Backing up Mnemo databases..."
-dump_postgres mnemo-postgres mnemo mnemo_justin "$BACKUP_DIR/mnemo_justin_$DATE.sql.gz"
-dump_postgres mnemo-postgres mnemo mnemo_annique "$BACKUP_DIR/mnemo_annique_$DATE.sql.gz"
 
 echo "Cleaning up old backups (keeping last 7 days)..."
 find "$BACKUP_DIR" -type f \( -name "*.sql.gz" -o -name "*.sqlite3.gz" \) -mtime +7 -delete

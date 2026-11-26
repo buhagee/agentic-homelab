@@ -121,7 +121,7 @@ The deploy script:
    `~/.local/state/qacey-deploy/last-good`, checks platform health and retries
    any explicitly enrolled native development update. It does not pull or
    recreate the main platform stack.
-4. Dumps Immich, Paperless SQLite, and both Mnemo databases before changing
+4. Dumps Immich PostgreSQL and Paperless SQLite before changing
    images. The preflight accepts PostgreSQL (`.sql.gz`) or Paperless SQLite
    (`.sqlite3.gz`) dumps newer than two hours.
 5. Builds changed local images.
@@ -133,7 +133,7 @@ The deploy script:
    platform rollback. See [managed native updates](development.md#managed-updates-through-qacey).
 
 The data-store images are digest-pinned in `versions.env`
-(`IMMICH_POSTGRES_VERSION`, `MNEMO_PGVECTOR_VERSION`, `POSTGRES_VERSION`,
+(`IMMICH_POSTGRES_VERSION`, `POSTGRES_VERSION`,
 `REDIS_VERSION`), so `compose pull` cannot move them without a commit. Other
 images are still tag-pinned; a real deploy may pull a moved tag.
 

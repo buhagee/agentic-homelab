@@ -17,7 +17,6 @@ MANAGED_VARIABLES = (
     "CROWDSEC_VERSION",
     "OAUTH2_PROXY_VERSION",
     "CADDY_VERSION",
-    "HERMES_WEBUI_VERSION",
     "IMMICH_VERSION",
     "VAULTWARDEN_VERSION",
     "SEARXNG_VERSION",
@@ -27,7 +26,6 @@ MANAGED_VARIABLES = (
     "PAPERLESS_VERSION",
     "SCRUTINY_VERSION",
     "POSTGRES_VERSION",
-    "OPENCODE_V2_VERSION",
 )
 
 
@@ -43,7 +41,6 @@ class VersionPolicyTests(unittest.TestCase):
     def test_data_store_images_are_digest_pinned(self):
         for variable in (
             "IMMICH_POSTGRES_VERSION",
-            "MNEMO_PGVECTOR_VERSION",
             "POSTGRES_VERSION",
             "REDIS_VERSION",
         ):

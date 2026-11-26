@@ -34,11 +34,10 @@ bash first-time-setup.sh
 Server setup, OAuth configuration, service configuration.
 - Server hardening (home + Oracle VPS)
 - OAuth setup (Google)
-- Service configuration (Uptime Kuma, WireGuard)
+- Service configuration (WireGuard)
 
 ### [deploy/](deploy/) — Deployment Scripts
 Deploy configurations and services.
-- Hermes agent configuration deployment
 - Oracle VPS deployment
 
 ### [maintenance/](maintenance/) — Maintenance & Operations
@@ -75,7 +74,6 @@ bash setup/setup-oauth.sh                   # Configure OAuth
 ### Deployment
 ```bash
 bash build.sh                               # Build images
-bash deploy/deploy-agent-config.sh          # Deploy Hermes config
 bash deploy/oracle-deploy.sh                # Deploy to Oracle VPS
 ```
 
@@ -83,13 +81,11 @@ bash deploy/oracle-deploy.sh                # Deploy to Oracle VPS
 ```bash
 bash maintenance/backup.sh                  # Run backup
 bash maintenance/docker-cleanup.sh          # Clean Docker
-bash maintenance/restart-hermes.sh          # Restart Hermes
 ```
 
 ### Testing
 ```bash
 bash testing/smoke-test.sh                  # Run smoke tests
-bash testing/smoke-test-api.sh              # Test API endpoints
 ```
 
 ## Script Conventions

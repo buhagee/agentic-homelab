@@ -9,38 +9,20 @@ COMPOSE = REPO_ROOT / "docker-compose.platform.yml"
 DATA_NETWORKS = {
     "immich-data": {"immich-postgres", "immich-redis", "immich-server"},
     "paperless-data": {"paperless-postgres", "paperless-redis", "paperless"},
-    "mnemo-data": {"mnemo-postgres", "hermes-justin", "hermes-annique"},
 }
 DATA_STORES = {
     "immich-postgres": "immich-data",
     "immich-redis": "immich-data",
     "paperless-postgres": "paperless-data",
     "paperless-redis": "paperless-data",
-    "mnemo-postgres": "mnemo-data",
 }
 OWNERS = {
     "immich-server": "immich-data",
     "paperless": "paperless-data",
-    "hermes-justin": "mnemo-data",
-    "hermes-annique": "mnemo-data",
 }
 OWNER_NETWORKS = {
     "immich-server": {"qacey-proxy", "qacey-internal", "immich-data"},
     "paperless": {"qacey-proxy", "qacey-internal", "paperless-data"},
-    "hermes-justin": {
-        "qacey-proxy",
-        "qacey-internal",
-        "qacey-mcp-internal",
-        "mnemo-data",
-        "hermes-peer",
-    },
-    "hermes-annique": {
-        "qacey-proxy",
-        "qacey-internal",
-        "qacey-mcp-internal",
-        "mnemo-data",
-        "hermes-peer",
-    },
 }
 
 

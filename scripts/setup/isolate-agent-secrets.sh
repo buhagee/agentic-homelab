@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Move the platform secret files outside /srv and replace
-# them with symlinks. The opencode-v2 container mounts only /srv,
-# so the symlink targets are not readable inside the agent.
+# them with symlinks. This keeps secret files outside the project tree.
 set -euo pipefail
 
 PLATFORM_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -69,14 +68,8 @@ move_secret "${PLATFORM_DIR}/secrets/.env" "${SECRETS_DIR}/secrets.env"
 cat <<EOF
 
 Secret files are now under ${SECRETS_DIR}.
-The opencode-v2 container does not mount that path.
-
 Verify from the host:
   ls -l ${PLATFORM_DIR}/.env ${PLATFORM_DIR}/secrets/.env
-
-Verify the agent cannot read them:
-  docker exec opencode-v2 sh -c 'test ! -r /workspace/qacey-platform/.env'
-  docker exec opencode-v2 sh -c 'test ! -r /workspace/qacey-platform/secrets/.env'
 
 The next backup includes ${SECRETS_DIR}.
 EOF

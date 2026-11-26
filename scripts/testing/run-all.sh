@@ -9,8 +9,6 @@ COMMANDS=(
   "python3 -m unittest discover -s scripts/setup/tests"
   "python3 -m unittest discover -s scripts/testing/tests"
   "python3 -m unittest discover -s scripts/deploy/tests"
-  "python3 -m unittest discover -s services/opencode-docker-control/tests"
-  "python3 -m unittest discover -s services/agent/google_workspace_mcp/tests"
   "bash scripts/testing/check-secrets.sh"
   "bash -n scripts/deploy/homeserver-deploy"
   "find scripts -name '*.sh' -print0 | xargs -0 -n1 bash -n"

@@ -22,8 +22,6 @@ class RunAllTests(unittest.TestCase):
             "scripts/setup/tests",
             "scripts/testing/tests",
             "scripts/deploy/tests",
-            "services/opencode-docker-control/tests",
-            "services/agent/google_workspace_mcp/tests",
             "bash -n",
         ):
             self.assertIn(expected, joined)
