@@ -189,9 +189,23 @@ class WebProvisionTests(unittest.TestCase):
         self.assertFalse((self.directory / 'oauth2.env').exists())
         self.assertFalse((self.directory.parent / 'openchamber.env').exists())
         self.assertTrue((self.host / 'usr/local/bin/qacey-dev-web').is_file())
+        rule = self.host / 'etc/tmpfiles.d/qacey-dev-proxy.conf'
+        self.assertEqual(rule.read_text(), 'd /run/qacey-dev-proxy 0755 root root -\n')
+        self.assertFalse((self.host / 'run/qacey-dev-proxy').exists())
         self.calls.assert_not_called()
         with patch.object(os, 'geteuid', return_value=os.geteuid() + 1), self.assertRaises(PermissionError):
             self.setup.main([*self.args, '--apply'])
+
+    def test_preexisting_identical_boot_rule_is_accepted_and_conflicting_rule_is_preserved(self):
+        rule = self.host / 'etc/tmpfiles.d/qacey-dev-proxy.conf'
+        rule.parent.mkdir()
+        rule.write_bytes(self.setup.PROXY_TMPFILES)
+        self.setup.main([*self.args, '--apply'])
+        conflicting = 'd /run/qacey-dev-proxy 0777 root root -\n'
+        rule.write_text(conflicting)
+        with self.assertRaisesRegex(ValueError, 'Conflicting qacey-dev-proxy tmpfiles rule'):
+            self.setup.main([*self.args, '--apply'])
+        self.assertEqual(rule.read_text(), conflicting)
 
     def test_private_lock_created_only_by_apply_and_never_uses_directory_inode(self):
         lock = self.host / 'etc/qacey-dev/web.lock'

@@ -30,7 +30,11 @@ A compromised agent can invoke allowed actions and interrupt those services.
 Require user approval in both harnesses' guidance; client-side approval alone
 is not an enforceable host boundary. Keep mutation grants minimal, especially
 for databases, networking, authentication, backups and personal-data services.
-The initial policy contains no production container permissions.
+The example grants status for Traefik, the native development units, and the
+gateway's OAuth and adapter containers. The optional `gateway` policy section
+accepts only `adapter` and `oauth` with the `status` action. Gateway status
+includes a fixed error code for a missing socket directory or another startup
+failure. The broker keeps the raw container error private.
 
 From a reviewed checkout in the operator terminal:
 
@@ -57,6 +61,10 @@ From either harness, run the same unprivileged command:
     qacey-dev-ops status containers searxng
     qacey-dev-ops logs containers searxng
     qacey-dev-ops status units qacey-db-backup.service
+    qacey-dev-ops status units qacey-dev-proxy.socket
+    qacey-dev-ops status containers traefik
+    qacey-dev-ops status gateway oauth
+    qacey-dev-ops status gateway adapter
 
 Only after explicit authorization, and only if listed:
 
@@ -70,11 +78,24 @@ complete after revocation.
     sudo systemctl stop 'qacey-dev-ops@*.service'
     sudo systemctl list-units 'qacey-dev-ops@*.service' --all
 
-To edit grants, revoke access first, edit the root-owned policy via sudoedit,
-then re-enable the socket and verify list/status. The broker validates policy
-on every request. The installer is first-install-only and refuses existing
-destinations; repair an interrupted installation or upgrade manually from
-reviewed source while the socket and accepted requests are stopped.
+To edit grants, stop the socket and any accepted requests first, then edit the
+root-owned policy via `sudoedit`. The broker validates policy on every request.
+For an existing installation, upgrade the broker and CLI from a reviewed
+checkout and merge the desired entries from `infrastructure/dev-ops/settings.example.json`
+into the live policy, keeping the installed operator name and existing grants:
+
+```sh
+sudo systemctl stop qacey-dev-ops.socket
+sudo systemctl stop 'qacey-dev-ops@*.service'
+sudo install -o root -g root -m 0644 infrastructure/dev-ops/broker.py /usr/local/lib/qacey-dev-ops/broker.py
+sudo install -o root -g root -m 0755 infrastructure/dev-ops/client.py /usr/local/bin/qacey-dev-ops
+sudoedit /etc/qacey-dev-ops/policy.json
+sudo systemctl start qacey-dev-ops.socket
+sudo -iu dev-agent qacey-dev-ops list
+sudo -iu dev-agent qacey-dev-ops status gateway adapter
+```
+
+The installer is first-install-only and refuses existing destinations.
 
 ## 2. Rootless development containers
 

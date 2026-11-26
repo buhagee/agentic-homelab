@@ -1,8 +1,17 @@
 {
   "operator": "REPLACE_WITH_DEPLOYMENT_OPERATOR",
-  "containers": {},
+  "containers": {"traefik": ["status"]},
   "units": {
     "qacey-deploy-reconcile.service": ["status"],
-    "qacey-db-backup.service": ["status"]
+    "qacey-db-backup.service": ["status"],
+    "qacey-codex.service": ["status"],
+    "qacey-codex-tmux.service": ["status"],
+    "qacey-openchamber.service": ["status"],
+    "qacey-dev-proxy.socket": ["status"],
+    "qacey-dev-proxy.service": ["status"]
+  },
+  "gateway": {
+    "adapter": ["status"],
+    "oauth": ["status"]
   }
 }

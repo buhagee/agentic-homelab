@@ -16,6 +16,8 @@ import web_config as web
 HOST_ROOT = Path('/')
 ROOT_UID = 0
 LIB_FILES = ('web_config.py', 'qacey-dev-web.py')
+# Docker can restore the adapter before the socket unit creates its parent.
+PROXY_TMPFILES = b'd /run/qacey-dev-proxy 0755 root root -\n'
 
 
 def write_atomic(path, data, mode=0o644):
@@ -40,13 +42,16 @@ class Provision:
         self.record = self.directory / 'installation.json'
         self.lib = HOST_ROOT / 'usr/local/lib/qacey-dev-web'
         self.launcher = HOST_ROOT / 'usr/local/bin/qacey-dev-web'
+        self.tmpfiles = HOST_ROOT / 'etc/tmpfiles.d/qacey-dev-proxy.conf'
         web.ROOT_UID = ROOT_UID
 
     def preflight(self):
         identity = web.development_record(HOST_ROOT)
         web.check_gateway_lock(HOST_ROOT, optional=True)
-        for path in (self.directory, self.record, self.lib, self.launcher):
+        for path in (self.directory, self.record, self.lib, self.launcher, self.tmpfiles):
             web.trusted_parents(path, HOST_ROOT, optional=True)
+        if web.trusted(self.tmpfiles, optional=True) and self.tmpfiles.read_bytes() != PROXY_TMPFILES:
+            raise ValueError('Conflicting qacey-dev-proxy tmpfiles rule. Review it before preparing the gateway.')
         existing = web.trusted(self.record, optional=True)
         previous = web.parse_json(self.record.read_text()) if existing else None
         if previous is not None:
@@ -89,6 +94,8 @@ class Provision:
             self.lib.mkdir(mode=0o755, exist_ok=True)
             for name in LIB_FILES: write_atomic(self.lib / name, (ASSETS / name).read_bytes())
             write_atomic(self.launcher, (ASSETS / 'qacey-dev-web').read_bytes(), 0o755)
+            self.tmpfiles.parent.mkdir(mode=0o755, exist_ok=True)
+            write_atomic(self.tmpfiles, PROXY_TMPFILES)
             record['ready'] = True
             record.pop('previous_files', None)
             write_atomic(self.record, (json.dumps(record, indent=2) + '\n').encode())

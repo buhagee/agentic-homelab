@@ -53,6 +53,41 @@ class OperationsTests(unittest.TestCase):
         self.assertEqual(call.call_args_list[1].args[0][-1],cid)
         self.assertNotIn(".Config", call.call_args_list[1].args[0][-2])
 
+    def test_gateway_status_uses_exact_project_and_reports_only_safe_errors(self):
+        settings = ops.validate_settings(dict(self.settings, gateway={"adapter": ["status"]}))
+        cid = "a" * 64
+        cases = (("running no-healthcheck", "", "running no-healthcheck"),
+                 ("exited no-healthcheck", "open /run/qacey-dev-proxy: no such file or directory",
+                  "exited no-healthcheck error=proxy-directory-missing"),
+                 ("exited no-healthcheck", "private details", "exited no-healthcheck error=container-start-failed"))
+        for state, error, expected in cases:
+            with self.subTest(expected=expected), patch.object(
+                    ops, "capture", side_effect=[cid + "\n", state + "\n" + json.dumps(error)]) as call:
+                result = ops.dispatch({"action": "status", "kind": "gateway", "target": "adapter"},
+                                      settings, self.operator)
+                self.assertEqual(result, expected)
+                self.assertIn("label=com.docker.compose.project=qacey-dev-web", call.call_args_list[0].args[0])
+                self.assertIn("label=com.docker.compose.service=adapter", call.call_args_list[0].args[0])
+                self.assertEqual(call.call_args_list[1].args[0][-1], cid)
+
+    def test_gateway_rejects_unlisted_targets_and_any_non_status_action(self):
+        settings = ops.validate_settings(dict(self.settings, gateway={"adapter": ["status"]}))
+        for target, actions in (("traefik", ["status"]), ("adapter", ["status", "restart"]),
+                                ("oauth", ["logs"])):
+            with self.assertRaises(ops.Denied):
+                ops.validate_settings(dict(settings, gateway={target: actions}))
+        for action, target in (("status", "oauth"), ("restart", "adapter"), ("logs", "adapter")):
+            with patch.object(ops, "capture") as call, self.assertRaises(ops.Denied):
+                ops.dispatch({"action": action, "kind": "gateway", "target": target}, settings, self.operator)
+            call.assert_not_called()
+
+    def test_socket_unit_can_be_inspected(self):
+        name = "qacey-dev-proxy.socket"
+        settings = ops.validate_settings(dict(self.settings, units={name: ["status"]}))
+        with patch.object(ops, "capture", return_value="ActiveState=active") as call:
+            ops.dispatch({"action": "status", "kind": "units", "target": name}, settings, self.operator)
+        self.assertEqual(call.call_args.args[0][-1], name)
+
     def test_ambiguous_container_never_mutates(self):
         with patch.object(ops, "capture", return_value=("a"*64+"\n"+"b"*64+"\n")), self.assertRaises(ops.Denied):
             ops.container_id("search")

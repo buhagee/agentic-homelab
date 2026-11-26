@@ -12,7 +12,8 @@ def main():
         commands.add_parser(action, allow_abbrev=False)
     for action in ("status", "logs", "start", "stop", "restart"):
         command = commands.add_parser(action, allow_abbrev=False)
-        command.add_argument("kind", choices=("containers", "units"))
+        kinds = ("containers", "units", "gateway") if action == "status" else ("containers", "units")
+        command.add_argument("kind", choices=kinds)
         command.add_argument("target")
     request = vars(parser.parse_args())
     try:
