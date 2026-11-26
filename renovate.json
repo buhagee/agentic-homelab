@@ -21,6 +21,18 @@
         "# renovate: datasource=(?<datasource>[a-z-]+) depName=(?<depName>[^ ]+) packageName=(?<packageName>[^ ]+)(?: versioning=(?<versioning>[a-z-]+))?(?: extractVersion=(?<extractVersion>[^ ]+))?\\n[A-Z0-9_]+=(?<currentValue>[^\\n]+)"
       ],
       "versioningTemplate": "{{#if versioning}}{{{versioning}}}{{else}}docker{{/if}}"
+    },
+    {
+      "customType": "regex",
+      "description": "Track the reviewed OpenChamber release pin in release.json",
+      "managerFilePatterns": [
+        "/^infrastructure/dev-agent/release\\.json$/"
+      ],
+      "matchStrings": [
+        "\"openchamber\": \\{\\s*\"version\": \"(?<currentValue>[^\"]+)\""
+      ],
+      "depNameTemplate": "@openchamber/web",
+      "datasourceTemplate": "npm"
     }
   ],
   "packageRules": [
@@ -95,6 +107,42 @@
     {
       "matchDatasources": [
         "docker"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "automerge": false,
+      "addLabels": [
+        "major"
+      ]
+    },
+    {
+      "matchDatasources": [
+        "npm"
+      ],
+      "matchPackageNames": [
+        "@openchamber/web"
+      ],
+      "automerge": true,
+      "addLabels": [
+        "native-runtime"
+      ],
+      "postUpgradeTasks": {
+        "commands": [
+          "python3 scripts/maintenance/refresh-openchamber-release.py {{{newVersion}}}"
+        ],
+        "fileFilters": [
+          "infrastructure/dev-agent/**"
+        ],
+        "executionMode": "update"
+      }
+    },
+    {
+      "matchDatasources": [
+        "npm"
+      ],
+      "matchPackageNames": [
+        "@openchamber/web"
       ],
       "matchUpdateTypes": [
         "major"

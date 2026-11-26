@@ -136,5 +136,38 @@ class OperationsTests(unittest.TestCase):
         with self.assertRaises(ops.Denied):
             ops.capture([sys.executable,"-c","import time; time.sleep(2)"],timeout=.05)
 
+    def test_storage_report_returns_disks_and_docker_summaries(self):
+        with patch.object(ops, "host_metrics", return_value={"disks": {"/": {"mounted": True}}}), \
+             patch.object(ops, "capture", side_effect=["9.0G\t/var/lib/docker\n", "Images 10GB\n", "traefik\trunning\n"]):
+            result = ops.dispatch({"action": "storage"}, self.settings, self.operator)
+        self.assertEqual(result["docker_df"], "Images 10GB")
+        self.assertEqual(result["containers"], "traefik\trunning")
+
+    def test_prune_requires_policy_and_uses_lock(self):
+        with self.assertRaises(ops.Denied):
+            ops.dispatch({"action": "prune"}, self.settings, self.operator)
+        settings = ops.validate_settings(dict(self.settings, prune=True))
+        with patch.object(ops, "mutation_lock", return_value=9) as lock, \
+             patch.object(ops, "rate_limit"), \
+             patch.object(ops, "capture", side_effect=["builder reclaimed 1GB", "images reclaimed 2GB"]), \
+             patch.object(ops.os, "close") as close:
+            result = ops.dispatch({"action": "prune"}, settings, self.operator)
+        self.assertIn("builder reclaimed 1GB", result)
+        self.assertIn("images reclaimed 2GB", result)
+        lock.assert_called_once_with(self.operator)
+        close.assert_called_once_with(9)
+
+    def test_sudo_verifies_operator_password_and_requires_policy(self):
+        with self.assertRaises(ops.Denied):
+            ops.dispatch({"action": "sudo", "argv": ["id"], "password": "secret"}, self.settings, self.operator)
+        settings = ops.validate_settings(dict(self.settings, sudo=True))
+        with patch.object(ops, "verify_operator_password") as verify, \
+             patch.object(ops, "capture", return_value="uid=0(root)\n") as call:
+            result = ops.dispatch({"action": "sudo", "argv": ["/usr/bin/id"], "password": "secret"},
+                                  settings, self.operator)
+        self.assertEqual(result, "uid=0(root)\n")
+        verify.assert_called_once_with("operator", "secret")
+        self.assertEqual(call.call_args.args[0], ["/usr/bin/id"])
+
 if __name__ == "__main__":
     unittest.main()

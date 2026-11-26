@@ -1,5 +1,7 @@
 """Local, opt-in production diagnostics and bounded existing-container actions."""
+import ctypes
 import fcntl
+import hmac
 import json
 import os
 from pathlib import Path
@@ -17,13 +19,15 @@ import time
 
 POLICY = Path("/etc/qacey-dev-ops/policy.json")
 IDENTITY = Path("/etc/qacey-dev/installation.json")
+SHADOW = Path("/etc/shadow")
 STATE = Path("/var/lib/qacey-dev-ops")
 DEPLOY_LOCK = Path("/run/lock/qacey-deploy.lock")
 SOCKET = "/run/qacey-dev-ops.sock"
 DOCKER = ("/usr/bin/docker", "--host", "unix:///var/run/docker.sock",
           "--config", "/etc/qacey-dev-ops")
-ENV = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "HOME": "/root",
-       "LC_ALL": "C", "SYSTEMD_PAGER": "cat", "SYSTEMD_COLORS": "0"}
+ENV = {"PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "HOME": "/root",
+       "LC_ALL": "C", "DEBIAN_FRONTEND": "noninteractive",
+       "SYSTEMD_PAGER": "cat", "SYSTEMD_COLORS": "0"}
 MUTATIONS = {"start", "stop", "restart"}
 READS = {"status", "logs"}
 SERVICE = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,79}\Z")
@@ -64,10 +68,14 @@ def root_file(path):
 
 def validate_settings(value):
     required = {"operator", "containers", "units"}
-    if not isinstance(value, dict) or not required <= value.keys() <= required | {"gateway"}:
-        raise Denied("expected operator, containers and units, with optional gateway")
+    optional = {"gateway", "prune", "sudo"}
+    if not isinstance(value, dict) or not required <= value.keys() <= required | optional:
+        raise Denied("expected operator, containers and units, with optional gateway, prune and sudo")
     if not isinstance(value["operator"], str) or not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", value["operator"]):
         raise Denied("invalid operator")
+    for flag in ("prune", "sudo"):
+        if flag in value and type(value[flag]) is not bool:
+            raise Denied("invalid boolean setting")
     for category, pattern, allowed in (("containers", SERVICE, READS | MUTATIONS),
                                       ("units", UNIT, READS)):
         entries = value[category]
@@ -104,6 +112,24 @@ def policy():
     if operator.pw_uid in (0, account.pw_uid):
         raise Denied("invalid deployment operator")
     return value, account, operator
+
+def verify_operator_password(operator_name, password):
+    if not isinstance(password, str) or not password or "\x00" in password:
+        raise Denied("invalid sudo password")
+    shadow_hash = None
+    for line in SHADOW.read_text(encoding="utf-8").splitlines():
+        fields = line.split(":")
+        if len(fields) >= 2 and fields[0] == operator_name:
+            shadow_hash = fields[1]
+            break
+    if not shadow_hash or shadow_hash[0] in ("!", "*"):
+        raise Denied("operator password authentication unavailable")
+    libcrypt = ctypes.CDLL("libcrypt.so.1")
+    libcrypt.crypt.argtypes = [ctypes.c_char_p, ctypes.c_char_p]
+    libcrypt.crypt.restype = ctypes.c_char_p
+    computed = libcrypt.crypt(password.encode("utf-8"), shadow_hash.encode("utf-8"))
+    if not computed or not hmac.compare_digest(computed.decode("utf-8", errors="replace"), shadow_hash):
+        raise Denied("invalid sudo password")
 
 def capture(argv, *, logs=False, timeout=15):
     """Bound output and time, never execute a shell or return command diagnostics."""
@@ -226,12 +252,51 @@ def host_metrics():
     return {"load_average": os.getloadavg(), "cpu_count": os.cpu_count(),
             "memory": memory, "disks": disks}
 
+def storage_report():
+    paths = ("/var/lib/docker", "/var/lib/containerd", "/var/log/journal", "/home", "/opt")
+    existing = [p for p in paths if Path(p).exists()]
+    sizes = capture(["/usr/bin/du", "-sh", *existing], logs=True, timeout=60) if existing else ""
+    docker_df = capture([*DOCKER, "system", "df"], logs=True, timeout=30)
+    containers = capture([*DOCKER, "container", "ls", "--all",
+                          "--format", "{{.Names}}\t{{.State}}\t{{.Status}}\t{{.Image}}"],
+                         logs=True, timeout=30)
+    return {"disks": host_metrics()["disks"], "directory_sizes": sizes.strip(),
+            "docker_df": docker_df.strip(), "containers": containers.strip()}
+
 def dispatch(request, settings, operator):
     if request == {"action": "monitor"}:
         return host_metrics()
+    if request == {"action": "storage"}:
+        return storage_report()
     if request == {"action": "list"}:
-        return {"containers": settings["containers"], "units": settings["units"],
-                "gateway": settings.get("gateway", {})}
+        result = {"containers": settings["containers"], "units": settings["units"],
+                  "gateway": settings.get("gateway", {})}
+        for flag in ("prune", "sudo"):
+            if flag in settings:
+                result[flag] = settings[flag]
+        return result
+    if request == {"action": "prune"}:
+        if settings.get("prune") is not True:
+            raise Denied("operation not allowed")
+        fd = mutation_lock(operator)
+        try:
+            rate_limit()
+            print("qacey-dev-ops: prune", file=sys.stderr, flush=True)
+            builder = capture([*DOCKER, "builder", "prune", "-f"], logs=True, timeout=300)
+            images = capture([*DOCKER, "image", "prune", "-a", "-f"], logs=True, timeout=300)
+            return (builder.strip() + "\n" + images.strip()).strip()
+        finally:
+            os.close(fd)
+    if isinstance(request, dict) and request.get("action") == "sudo":
+        if set(request) != {"action", "argv", "password"} or settings.get("sudo") is not True:
+            raise Denied("operation not allowed")
+        argv = request["argv"]
+        if (not isinstance(argv, list) or not 1 <= len(argv) <= 64
+                or any(not isinstance(arg, str) or "\x00" in arg for arg in argv) or not argv[0]):
+            raise Denied("invalid sudo command")
+        verify_operator_password(settings["operator"], request["password"])
+        print("qacey-dev-ops: sudo " + argv[0], file=sys.stderr, flush=True)
+        return capture(argv, logs=True, timeout=300)
     if not isinstance(request, dict) or set(request) != {"action", "kind", "target"}:
         raise Denied("invalid request")
     action, kind, target = (request[k] for k in ("action", "kind", "target"))
