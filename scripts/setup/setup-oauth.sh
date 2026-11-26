@@ -227,7 +227,6 @@ echo -e "  console.cloud.google.com → APIs & Services → Credentials → OAut
 echo ""
 echo -e "  https://photos.${DOMAIN}/auth/login                           (Immich)"
 echo -e "  https://photos.${DOMAIN}/api/oauth/mobile-redirect            (Immich iOS)"
-  echo -e "  https://sandbox.${DOMAIN}/oauth2/callback                     (Temporary sandbox via oauth2-proxy)"
 echo -e "  https://vault.${DOMAIN}/identity/connect/oidc-signin          (Vaultwarden)"
 echo ""
 success "OAuth setup complete"

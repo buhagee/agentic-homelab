@@ -6,6 +6,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 FIRST_TIME_SETUP = REPO_ROOT / "scripts" / "setup" / "first-time-setup.sh"
+OAUTH_SETUP = REPO_ROOT / "scripts" / "setup" / "setup-oauth.sh"
 INSTALL_BACKUP = REPO_ROOT / "scripts" / "maintenance" / "install-backup.sh"
 SERVER_SETUP = REPO_ROOT / "scripts" / "setup" / "server-setup-home.sh"
 
@@ -26,6 +27,20 @@ class BootstrapContractTests(unittest.TestCase):
     def test_first_time_setup_does_not_probe_the_retired_agent_route(self) -> None:
         script = FIRST_TIME_SETUP.read_text(encoding="utf-8")
         self.assertNotIn('https://agent.${QACEY_DOMAIN}', script)
+
+    def test_oauth_setup_summary_lists_callbacks_for_active_services(self) -> None:
+        script = OAUTH_SETUP.read_text(encoding="utf-8")
+        summary = script[script.index('echo -e "${BLUE}── Summary'):]
+        result = subprocess.run(
+            ["bash", "-eu", "-c", 'DOMAIN=example.test\nBLUE= GREEN= NC=\nsuccess() { :; }\n' + summary],
+            capture_output=True, text=True, check=True,
+        )
+        redirects = [line.split()[0] for line in result.stdout.splitlines() if line.lstrip().startswith("https://")]
+        self.assertEqual(redirects, [
+            "https://photos.example.test/auth/login",
+            "https://photos.example.test/api/oauth/mobile-redirect",
+            "https://vault.example.test/identity/connect/oidc-signin",
+        ])
 
     def test_fresh_setup_generates_secrets_without_a_legacy_opencode_password(self) -> None:
         script = FIRST_TIME_SETUP.read_text(encoding="utf-8")

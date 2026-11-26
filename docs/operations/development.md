@@ -122,9 +122,9 @@ selection. Packages remain in versioned directories under
 major to avoid reusing an incompatible native addon. This is version discipline
 within a user-owned runtime, not an immutable security boundary.
 
-The initial shared MCP is the public Context7 endpoint. Personal Google,
-Existing integrations must be configured in the native harness that uses them. An enabled MCP can
-make outbound requests according to that client's normal tool policy.
+The initial shared MCP is the public Context7 endpoint. Configure personal
+integrations in the native harness that uses them. An enabled MCP can make
+outbound requests according to that client's normal tool policy.
 
 Codex uses its own `qacey-codex login` device flow. OpenCode uses its own provider
 connection in OpenChamber settings. Sign in deliberately under the dedicated
