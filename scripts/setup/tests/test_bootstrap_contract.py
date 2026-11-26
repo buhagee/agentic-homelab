@@ -23,6 +23,10 @@ class BootstrapContractTests(unittest.TestCase):
         self.assertNotIn('deploy-agent-config.sh', script)
         self.assertIn('START_SCRIPT="${PLATFORM_DIR}/scripts/start.sh"', script)
 
+    def test_first_time_setup_does_not_probe_the_retired_agent_route(self) -> None:
+        script = FIRST_TIME_SETUP.read_text(encoding="utf-8")
+        self.assertNotIn('https://agent.${QACEY_DOMAIN}', script)
+
     def test_fresh_setup_generates_secrets_without_a_legacy_opencode_password(self) -> None:
         script = FIRST_TIME_SETUP.read_text(encoding="utf-8")
         start = script.index("gen_hex()")

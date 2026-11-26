@@ -7,7 +7,6 @@
 #   - Generates secrets and writes .env file
 #   - Creates required host directories
 #   - Starts all services via docker compose
-#   - Pre-warms TLS certificates
 #
 # ⚠️  DO NOT re-run on an initialised instance — it regenerates secrets and
 #    overwrites .env files, breaking all running services. Use reset.sh first
@@ -328,18 +327,6 @@ if [[ -n "${CROWDSEC_ENROLLMENT_TOKEN:-}" ]]; then
 else
   info "CROWDSEC_ENROLLMENT_TOKEN not set — skipping cloud enrollment."
 fi
-
-# ── Pre-warm TLS certs ────────────────────────────────────────────────────────
-info "Pre-warming TLS certificates (up to 5 min)..."
-MAX_TLS=300; WAITED=0
-until curl -sf "https://agent.${QACEY_DOMAIN}/" >/dev/null 2>&1 || \
-      curl -sf -o /dev/null -w "%{http_code}" "https://agent.${QACEY_DOMAIN}/" 2>/dev/null | grep -qE "^(200|401|403)"; do
-  sleep 10; WAITED=$((WAITED+10))
-  [[ ${WAITED} -lt ${MAX_TLS} ]] || { warn "TLS cert not ready after ${MAX_TLS}s — check Traefik logs."; break; }
-  echo -n "."
-done
-echo ""
-[[ ${WAITED} -lt ${MAX_TLS} ]] && success "TLS certificates ready."
 
 # ── Baby Buddy: promote admin user to staff/superuser ────────────────────────
 # oauth2-proxy creates Django users with Google's numeric ID as the username.
