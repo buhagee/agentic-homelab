@@ -626,6 +626,13 @@ the existing platform deployment pipeline. Native updates run after a successful
 platform health check only on hosts explicitly enrolled above. An unenrolled host
 receives the source changes without native account creation, login or activation.
 
+## Optional operational access
+
+After initial host acceptance, see [native development operations](dev-operations.md)
+for scoped production diagnostics, explicitly authorized container actions and a
+separate rootless development-container engine. Neither capability is enabled by
+the standard native installation or automatic updates.
+
 ## References
 
 - [Codex skills](https://learn.chatgpt.com/docs/build-skills.md)
