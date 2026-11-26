@@ -282,8 +282,11 @@ def dispatch(request, settings, operator):
         try:
             rate_limit()
             print("qacey-dev-ops: prune", file=sys.stderr, flush=True)
-            builder = capture([*DOCKER, "builder", "prune", "-f"], logs=True, timeout=300)
-            images = capture([*DOCKER, "image", "prune", "-a", "-f"], logs=True, timeout=300)
+            deadline = time.monotonic() + 280
+            builder = capture([*DOCKER, "builder", "prune", "-f"], logs=True,
+                              timeout=max(1, deadline - time.monotonic()))
+            images = capture([*DOCKER, "image", "prune", "-a", "-f"], logs=True,
+                             timeout=max(1, deadline - time.monotonic()))
             return (builder.strip() + "\n" + images.strip()).strip()
         finally:
             os.close(fd)
