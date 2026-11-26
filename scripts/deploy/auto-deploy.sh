@@ -159,6 +159,22 @@ refresh_controller() {
   python3 scripts/setup/install-opencode-docker-control.py
 }
 
+refresh_native_development() {
+  local helper=/usr/local/sbin/qacey-dev-deploy
+  # A separate, explicit bootstrap installs this root-owned boundary. Never run
+  # privileged native provisioning directly from this operator-owned checkout.
+  if [[ ! -e "$helper" && ! -L "$helper" ]]; then
+    return 0
+  fi
+  if [[ -x "$helper" ]] && sudo -n "$helper" apply "$SHA"; then
+    return 0
+  fi
+  echo "ERROR: platform $SHA is healthy; native development update requires attention"
+  alert "Qacey development update failed" \
+    "Platform $SHA is healthy. Native updating failed; inspect qacey-dev-deploy status. The platform was not rolled back."
+  return 1
+}
+
 # Containers whose services were removed from Compose. Keep this list so the
 # next deploy does not leave an orphan running.
 RETIRED_CONTAINERS=(skillclaw)
@@ -215,6 +231,7 @@ if [[ "$ALREADY_DEPLOYED" -eq 1 ]]; then
   retire_containers \
     && if bash scripts/maintenance/platform-healthcheck.sh; then
       printf '%s\n' "$SHA" > "$LAST_GOOD_FILE"
+      if ! refresh_native_development; then exit 1; fi
       exit 0
     fi
   die "healthcheck failed for already-deployed SHA $SHA"
@@ -238,6 +255,9 @@ if deploy_stack; then
   printf '%s\n' "$SHA" > "$LAST_GOOD_FILE"
   rm -f "$FAILED_SHA_FILE"
   echo "=== Qacey deploy succeeded: $SHA ==="
+  # Native state has its own transaction. A failed or deferred native update
+  # must never enter the platform rollback path below.
+  if ! refresh_native_development; then exit 1; fi
   exit 0
 fi
 

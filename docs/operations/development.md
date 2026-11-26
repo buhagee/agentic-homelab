@@ -5,9 +5,12 @@ OpenCode chat and a browser terminal; that terminal attaches to native Codex in
 an independently supervised tmux session. The server remains headless. The
 browser interface does not provide graphical desktop Computer Use.
 
-This is an **opt-in installation**. Merging publishes the files through the
-existing platform pipeline; it does not install native runtimes, apply user
-configuration, start services or remove Hermes/the existing Docker OpenCode.
+This is an **opt-in installation**. Complete the first setup, provider login and
+HTTPS acceptance below, then enroll the environment for managed updates. After
+enrollment, successful platform deployments can update native runtimes, the shared
+baseline and gateway while preserving active work and stopped-service intent.
+Unconfigured hosts receive source files only. Hermes and the existing Docker
+OpenCode remain available during this migration.
 
 ## What is shared
 
@@ -379,11 +382,139 @@ not deleting the sync state or forcing an overwrite. An interrupted apply resume
 only for the same baseline with unchanged before/after files. Repeating a
 completed sync is a no-op. Reconcile any active `~/.codex/AGENTS.override.md` before syncing global guidance.
 
-Qacey auto-deploy is useful for distributing the reviewed source. It deliberately
-does not apply personal configuration, upgrade runtimes, install every plugin or
-restart coding sessions. These remain separate lifecycle operations.
+With managed updates enrolled, a reviewed change to this baseline is applied by
+Qacey's native reconciliation when the environment is idle. Changes to shared
+configuration preserve the same conflict checks as manual sync. Authentication,
+local additions and client-specific plugins remain owned by their native clients.
+Pause managed updates before editing those configuration files manually.
+
+## Managed updates through Qacey
+
+Initial account provisioning, provider login, credentials and HTTPS activation
+remain explicit operator steps. After confirming the initial native-service and
+HTTPS acceptance checks, enroll the existing installation once. Subsequent successful Qacey deployments
+reconcile the reviewed native helpers, runtime pins, shared configuration, service
+units and gateway. The existing ten-minute reconciliation timer also retries a
+deferred update when no further commit has been merged.
+
+### Enroll the existing installation
+
+Use the operator account that owns the platform deployment checkout, not
+`dev-agent`. Ensure the existing
+[reconciliation timer](deploy-runner.md#reconciliation-timer) is installed,
+enabled and active; enrollment checks it but does not enable it. All three native
+installation records must be ready, the dedicated identity must still match,
+and both root credential files must pass validation. From a reviewed checkout,
+substitute the digest from the successful Oracle marker check above:
+
+```sh
+sudo python3 scripts/setup/install-dev-autodeploy.py \
+  --operator "$(id -un)" \
+  --verified-oracle-route VERIFIED_SHA256
+
+sudo python3 scripts/setup/install-dev-autodeploy.py \
+  --operator "$(id -un)" \
+  --verified-oracle-route VERIFIED_SHA256 \
+  --apply
+
+sudo qacey-dev-deploy status
+```
+
+The first command previews enrollment. The second installs the updater and its
+root-owned policy; it does not start services or log in to providers. The default
+source is `https://github.com/buhagee/agentic-homelab.git`, branch `main`. A reviewed
+public GitHub fork can be selected with `--repository HTTPS_URL`. Credentials in
+repository URLs and alternate branches are rejected.
+
+Enrollment delegates only `qacey-dev-deploy apply COMMIT_SHA` to the deployment
+operator. The updater independently fetches its fixed source into a private
+root-owned Git store and accepts a fresh request only for the current `main` tip.
+It runs privileged setup from that verified source. Runtime installation and
+configuration sync run as the existing development account with no extra groups.
+The development account receives no sudo permission. Merging changes to these
+deployment scripts therefore authorizes their use by this enrolled privileged
+path; review them accordingly.
+
+### What happens after a merge
+
+The main platform deployment and health check finish first. The native updater
+then compares the inputs it consumes with the last successful native deployment.
+Documentation and unrelated platform changes do not reinstall runtimes or restart
+native services. An unchanged input digest is a no-op, not a repair of runtime
+drift. Changes to root-managed installation files are rejected for operator
+review rather than silently adopted.
+
+For changed inputs, the updater requires two idle observations, at least one
+minute apart; the ten-minute timer normally supplies the second observation.
+Running Codex processes, any managed tmux session including detached sessions,
+OpenCode work, native terminals and supported queued or autonomous activity defer
+the update. Unknown versions, unavailable probes and incomplete status also
+defer it. Finish work and exit its terminal/session when ready: closing the
+browser or detaching tmux does not necessarily make the environment idle.
+The optional experimental `qacey-codex.service` must be stopped separately.
+
+Before publication, the updater records service and gateway state, closes browser
+ingress and checks activity again. It refreshes the reviewed installation, verifies
+versions and application health, then restores only services and ingress that
+were previously active. It preserves unit enablement and never restarts the
+independent tmux server. An OpenChamber or gateway restart disconnects browser
+connections; reconnect once the update has completed.
+
+The pinned applications expose status snapshots, not an atomic maintenance lock.
+The checks are conservative, but direct local clients or internal callbacks can
+race with them. OpenChamber's auxiliary recap/suggestion generation may be
+cancelled by its normal shutdown. Disable deliberate autonomous producers or
+finish their work yourself; the updater does not change those preferences to
+force an idle result.
+
+The recorded Oracle digest can be reused only while the rendered edge fragment
+is unchanged. An edge-route change blocks publication until the operator prepares
+and verifies the new route and explicitly repeats enrollment with its digest.
+The updater does not change Oracle or attest to its remote state.
+
+### Pause, inspect and recover
+
+```sh
+sudo qacey-dev-deploy status
+sudo qacey-dev-deploy pause
+# Perform deliberate maintenance only after pause succeeds.
+sudo qacey-dev-deploy resume
+```
+
+Pause and resume require the operator's administrative terminal. They share the
+updater's lock; if an update is running, pause refuses instead of interrupting it.
+A successful pause prevents subsequent native updates and retains any pending
+transaction. Resume lets the next successful platform reconciliation retry.
+Neither command changes the main platform deployment or starts native services.
+
+Status reports desired and applied revisions/digests, the pause flag, a sanitized
+reason and any interrupted transaction phase. Busy/unknown activity is a deferred
+update. A failed native update alerts separately and leaves the healthy platform's
+`last-good` revision intact; it does not roll back Qacey. After publication begins,
+failures keep browser ingress closed and preserve the original lifecycle journal.
+Recovery retries the recorded immutable source, even if `main` has since advanced,
+before attempting a later deployment. It does not automatically downgrade mutable
+application data. Inspect the local failure, correct its cause and let reconciliation
+retry. Do not delete the journal to bypass a failed update. A broken recorded
+release may require reviewed manual repair rather than a newer merge alone.
+
+The updater's policy is `/etc/qacey-dev/deployment.json`; its private state and
+verified source checkouts are under `/var/lib/qacey-dev-deploy`. Keep these records
+through an interrupted update. If deliberately changing the installed account,
+Node path, port, gateway settings or root-managed files, pause first, complete
+manual maintenance, then repeat enrollment from a reviewed checkout. Enrollment
+refuses an unfinished transaction and preserves the pause flag; explicitly resume
+when maintenance is complete.
 
 ## Stop, revoke, update and recover
+
+When managed updates are enrolled, pause them before planned manual maintenance
+and wait for a successful pause. For urgent access revocation, stop the gateway
+immediately, then pause the updater. If pause reports an update in progress, that
+update may restore the previously active gateway: repeat the stop after pause
+succeeds and verify it stays stopped. Restrict the development route at the edge
+if access must remain blocked throughout an in-progress update. Inspect any
+interrupted transaction before deliberately restoring access.
 
 ```sh
 sudo qacey-dev-web stop
@@ -424,7 +555,7 @@ installing the new units and reloading systemd, only if it was enabled and you
 want to preserve boot startup. For a previously disabled socket, leave it
 disabled.
 
-For updates, record current service enablement/active states and finish affected
+For manual updates, record current service enablement/active states and finish affected
 work. Stop the gateway, review new pins and package lock/hash changes, rerun root
 preparation, install the matching runtimes as the account, then sync the reviewed
 baseline. Run `systemctl daemon-reload` after unit changes. If changing the native port,
@@ -440,7 +571,10 @@ If saved application state has migrated, assess its compatibility before a
 runtime rollback; a version directory is not a backup of mutable data.
 
 Back up uncommitted projects, shared guidance/skills, user sync state, private
-client login/session data, and root installation/settings records. Encrypt any
+client login/session data, and root installation/settings records. For an enrolled
+updater, include its deployment policy and state journal; its verified Git source
+is reproducible except that the exact source for an unfinished transaction must
+remain available until recovery finishes. Encrypt any
 backup containing credentials, including root secret files. Restore the dedicated
 UID/GID, private home/secret permissions and root records together; do not copy
 these credentials into another user. Existing platform backups do not automatically
@@ -479,6 +613,8 @@ HTTP/WebSocket proxy. These checks do not prove the live server's deployment.
 - [ ] Stop OpenChamber while the gateway is up: the socket path disappears, the forwarder stops and a browser retry leaves the app stopped. Confirm the independent tmux/Codex session survives.
 - [ ] Start OpenChamber, confirm the managed OpenCode child is ready, start the socket, then reconnect. Exercise unexpected service loss and the same bridge recovery in a maintenance window.
 - [ ] Gateway stop cuts an already-open WebSocket; native jobs continue until deliberately stopped.
+- [ ] After enrollment, a busy session defers native updating and the reconciliation timer retries after it is finished; an unrelated commit causes no native restart.
+- [ ] Pause/resume work, stopped services stay stopped, and native failures leave the platform healthy while preserving an inspectable recovery journal.
 - [ ] Boot/restart policy, explicit sudo handoff and encrypted backup/restore have been exercised.
 
 Only after acceptance should a separate cleanup PR retire Hermes, personal MCPs,
@@ -486,9 +622,9 @@ seed interaction and duplicated configuration. Preserve useful old OpenCode stat
 before removing its existing parent directories.
 
 **Merge consequence:** pushes to `main` and the reconciliation timer can invoke
-the pre-existing platform deployment pipeline. This PR's native/gateway setup is
-not called by that pipeline, but schedule the merge with the existing deployment
-behaviour in mind.
+the existing platform deployment pipeline. Native updates run after a successful
+platform health check only on hosts explicitly enrolled above. An unenrolled host
+receives the source changes without native account creation, login or activation.
 
 ## References
 

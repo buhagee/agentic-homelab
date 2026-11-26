@@ -15,8 +15,10 @@ follow-up work. Share portable `.agents/skills`, repository guidance and the
 nonsecret MCP baseline; keep plugin runtimes, models, approvals, authentication
 and history native to each harness. OpenChamber UI additions stay OpenCode-local
 until deliberately promoted. Baseline sync preserves unmanaged fields and rejects
-managed drift; platform auto-deploy publishes source without applying user
-configuration or restarting native development sessions.
+managed drift. After explicit enrollment for managed updates, platform auto-deploy
+applies the reviewed baseline and native runtime changes when the environment is
+idle. Active coding work defers the update; Codex's tmux service is never restarted.
+Provider authentication and client-local plugins/settings remain user-owned.
 
 Use Superpowers for implementation and explicitly selected Gstack lenses for
 planning/review. Install a native Codex workflow once under the dedicated account;

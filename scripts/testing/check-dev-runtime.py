@@ -25,6 +25,7 @@ ASSETS = ROOT / 'infrastructure/dev-agent'
 sys.path.insert(0, str(ASSETS))
 import install_runtime
 import sync_config
+import deployment_probe
 
 
 def command(argv, env, cwd):
@@ -160,6 +161,55 @@ def openchamber_backend(node, package, binary, project, env):
         with response:
             payload = response.read(2 * 1024 * 1024)
             return response.status, (json.loads(payload) if 'json' in response.headers.get('Content-Type', '') else None)
+    def fixture_listener(candidate, role):
+        # Independently prove that both ports belong to this disposable process
+        # tree before sending synthetic passwords. OpenChamber gives its backend
+        # a separate process group; production ownership uses the systemd cgroup.
+        if process.poll() is not None or role not in ('openchamber', 'opencode'):
+            return False
+        sockets = set()
+        for table, loopback in (('/proc/net/tcp', '0100007F'),
+                                ('/proc/net/tcp6', '00000000000000000000000001000000')):
+            for line in Path(table).read_text().splitlines()[1:]:
+                fields = line.split()
+                address, raw_port = fields[1].split(':')
+                if fields[3] != '0A' or int(raw_port, 16) != candidate:
+                    continue
+                if address != loopback or int(fields[7]) != os.geteuid():
+                    return False
+                sockets.add(fields[9])
+        if not sockets:
+            return False
+        parents = {}
+        for entry in Path('/proc').iterdir():
+            if not entry.name.isdecimal():
+                continue
+            try:
+                if entry.stat().st_uid != os.geteuid():
+                    continue
+                fields = (entry / 'stat').read_text().rsplit(') ', 1)[1].split()
+                parents[int(entry.name)] = int(fields[1])
+            except (FileNotFoundError, ProcessLookupError):
+                continue
+        descendants, pending = {process.pid}, [process.pid]
+        while pending:
+            parent = pending.pop()
+            children = {pid for pid, owner in parents.items() if owner == parent} - descendants
+            descendants.update(children); pending.extend(children)
+        owned = set()
+        for pid in descendants:
+            try:
+                entry = Path('/proc') / str(pid)
+                for descriptor in (entry / 'fd').iterdir():
+                    try:
+                        link = os.readlink(descriptor)
+                    except FileNotFoundError:
+                        continue
+                    if link.startswith('socket:[') and link.endswith(']'):
+                        owned.add(link[8:-1])
+            except (FileNotFoundError, ProcessLookupError):
+                continue
+        return sockets <= owned
     try:
         deadline = time.monotonic() + 40
         while time.monotonic() < deadline:
@@ -178,6 +228,28 @@ def openchamber_backend(node, package, binary, project, env):
                             urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
         assert request(authenticated, '/auth/session', {'password': password})[0] == 200
         assert request(authenticated, '/auth/session')[0] == 200
+        pins = json.loads((ASSETS / 'release.json').read_text())
+        probe_arguments = dict(port=port, expected_openchamber=pins['openchamber']['version'],
+                               expected_opencode=pins['opencode']['version'], expected_binary=str(binary),
+                               ui_password=password, backend_password=environment['OPENCODE_PASSWORD'],
+                               validate_listener=fixture_listener)
+        result = deployment_probe.probe(**probe_arguments, health_only=True)
+        assert result == {'state': 'healthy', 'reason': 'healthy'}, result
+        result = deployment_probe.probe(**probe_arguments)
+        assert result == {'state': 'idle', 'reason': 'idle'}, result
+        # An empty saved conversation exercises the real session metadata/page
+        # envelope without sending a prompt or asking a provider to do work.
+        backend_port = health['openCodePort']
+        assert fixture_listener(backend_port, 'opencode')
+        auth = 'Basic ' + base64.b64encode(('opencode:' + environment['OPENCODE_PASSWORD']).encode()).decode()
+        create = urllib.request.Request(f'http://127.0.0.1:{backend_port}/api/session',
+            data=json.dumps({'title': 'Disposable deployment probe'}).encode(),
+            headers={'Content-Type': 'application/json', 'Authorization': auth})
+        with unauth.open(create, timeout=3) as response:
+            assert response.status == 200 and isinstance(json.load(response)['data']['id'], str)
+        result = deployment_probe.probe(**probe_arguments)
+        assert result == {'state': 'idle', 'reason': 'idle'}, result
+        print('Pinned authenticated native deployment health, empty-state and saved-session idle probes: PASS')
     finally:
         if process.poll() is None: process.terminate()
         try: process.wait(timeout=10)

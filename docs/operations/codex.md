@@ -2,8 +2,9 @@
 
 This is an opt-in native development environment. It adds a dedicated account,
 private state, a pinned runtime installer and a disabled remote-access unit. It
-does not replace the running OpenCode/Hermes stack or install itself through the
-platform deployment pipeline.
+does not replace the running OpenCode/Hermes stack. Initial provisioning and login
+are explicit. The shared development runbook describes enrollment for automatic
+updates through the platform deployment pipeline after that first setup.
 
 ## Recommended phone access
 
@@ -292,6 +293,12 @@ controls as needed. Retain the dedicated home and its work until the operator
 has reviewed what is unique.
 
 ## Update an initialized installation
+
+The shared Codex/OpenChamber environment supports automatic updates after
+[managed-update enrollment](development.md#managed-updates-through-qacey).
+Pause that updater before using the manual procedure below. Its normal idle
+updates preserve the independent tmux service. The optional experimental remote
+daemon has a separate lifecycle and must be stopped before a managed update.
 
 Record the current CLI, daemon and workflow-plugin versions. Review the desired
 release and installer SHA-256 in `infrastructure/codex/release.json`. The

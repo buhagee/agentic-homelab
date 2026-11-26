@@ -72,10 +72,11 @@ development account and independent clones. Portable skills, guidance and common
 MCP definitions are shared; each harness keeps its own login, plugins and history.
 The [Codex foundation](docs/operations/codex.md) supplies account/runtime onboarding.
 
-All setup and activation are opt-in. Existing operator checkouts, Hermes and the
-Docker OpenCode stack remain unchanged. Merging may still trigger the platform's
-existing deployment pipeline; it does not invoke native setup or restart these
-coding services.
+Initial setup, login and activation are opt-in. After enrolling the installed
+environment for managed updates, successful Qacey deployments reconcile native
+runtimes, shared configuration and the HTTPS gateway. Busy sessions defer the
+update to a later reconciliation pass. Existing operator checkouts, Hermes and
+the Docker OpenCode stack remain unchanged by this native setup.
 
 ## Security posture
 
