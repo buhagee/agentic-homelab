@@ -1,0 +1,19 @@
+[Unit]
+Description=Qacey Codex managed remote control
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=@USER@
+Group=@USER@
+UMask=0077
+RemainAfterExit=yes
+ExecCondition=/usr/local/bin/qacey-codex login-status
+ExecStart=/usr/local/bin/qacey-codex start
+ExecStop=/usr/local/bin/qacey-codex stop
+TimeoutStartSec=90s
+TimeoutStopSec=900s
+
+[Install]
+WantedBy=multi-user.target

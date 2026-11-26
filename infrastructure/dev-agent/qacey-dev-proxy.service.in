@@ -1,0 +1,22 @@
+[Unit]
+Description=Unix to loopback bridge for native OpenChamber
+# A connection may start the forwarder only while both units are already active.
+Requisite=qacey-openchamber.service qacey-dev-proxy.socket
+After=qacey-openchamber.service qacey-dev-proxy.socket
+PartOf=qacey-dev-proxy.socket
+
+[Service]
+Type=simple
+User=@USER@
+Group=@USER@
+ExecStart=/usr/lib/systemd/systemd-socket-proxyd 127.0.0.1:@PORT@
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true

@@ -1,0 +1,12 @@
+[Unit]
+Description=Reconcile the Qacey platform with origin/main
+Documentation=https://github.com/buhagee/qacey_platform
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=buhagiar
+ExecStart=/bin/bash __PLATFORM_DIR__/scripts/deploy/reconcile.sh
+StandardOutput=journal
+StandardError=journal

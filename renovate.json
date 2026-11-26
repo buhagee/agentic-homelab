@@ -1,0 +1,112 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard"
+  ],
+  "timezone": "Australia/Sydney",
+  "prHourlyLimit": 0,
+  "platformAutomerge": true,
+  "enabledManagers": [
+    "custom.regex"
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Update Docker image versions annotated in versions.env",
+      "managerFilePatterns": [
+        "/^versions\\.env$/"
+      ],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>[a-z-]+) depName=(?<depName>[^ ]+) packageName=(?<packageName>[^ ]+)(?: versioning=(?<versioning>[a-z-]+))?(?: extractVersion=(?<extractVersion>[^ ]+))?\\n[A-Z0-9_]+=(?<currentValue>[^\\n]+)"
+      ],
+      "versioningTemplate": "{{#if versioning}}{{{versioning}}}{{else}}docker{{/if}}"
+    }
+  ],
+  "packageRules": [
+    {
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchUpdateTypes": [
+        "patch"
+      ],
+      "matchPackageNames": [
+        "traefik",
+        "cloudflare/cloudflared",
+        "searxng/searxng",
+        "unclecode/crawl4ai",
+        "ghcr.io/analogj/scrutiny",
+        "quay.io/oauth2-proxy/oauth2-proxy",
+        "caddy"
+      ],
+      "groupName": "stateless patch updates",
+      "addLabels": [
+        "stateless"
+      ],
+      "automerge": true
+    },
+    {
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchUpdateTypes": [
+        "minor"
+      ],
+      "matchPackageNames": [
+        "traefik",
+        "cloudflare/cloudflared",
+        "searxng/searxng",
+        "unclecode/crawl4ai",
+        "ghcr.io/analogj/scrutiny",
+        "quay.io/oauth2-proxy/oauth2-proxy",
+        "caddy"
+      ],
+      "groupName": "stateless minor updates",
+      "addLabels": [
+        "stateless"
+      ],
+      "automerge": true
+    },
+    {
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchPackageNames": [
+        "ghcr.io/immich-app/immich-server",
+        "ghcr.io/immich-app/immich-machine-learning",
+        "ghcr.io/immich-app/postgres",
+        "ghcr.io/paperless-ngx/paperless-ngx",
+        "postgres",
+        "pgvector/pgvector",
+        "redis",
+        "vaultwarden/server",
+        "ghcr.io/home-assistant/home-assistant",
+        "crowdsecurity/crowdsec",
+        "adguard/adguardhome",
+        "lscr.io/linuxserver/wireguard",
+        "ollama/ollama"
+      ],
+      "automerge": true,
+      "addLabels": [
+        "stateful"
+      ]
+    },
+    {
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "automerge": false,
+      "addLabels": [
+        "major"
+      ]
+    }
+  ],
+  "vulnerabilityAlerts": {
+    "enabled": true
+  },
+  "automerge": true
+}

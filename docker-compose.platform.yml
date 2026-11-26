@@ -1,0 +1,889 @@
+# ============================================================================
+# docker-compose.platform.yml — Qacey Platform
+# ============================================================================
+# Standalone compose file for the Qacey platform layer. Previously used as
+# an override for LIA-Qacey (decommissioned in U-04). Now runs standalone.
+#
+# IMAGE VERSIONS: All image version tags are defined in versions.env (repo root).
+# Do NOT hardcode version tags here — always use the ${VAR} references and
+# update versions.env when bumping any image.
+#
+# Usage:
+#   docker compose \
+#     -f docker-compose.platform.yml \
+#     --env-file .env \
+#     --env-file versions.env \
+#     up -d
+#
+# Or via scripts/start.sh which handles this automatically.
+# ============================================================================
+
+services:
+
+  ollama:
+    image: ollama/ollama:${OLLAMA_VERSION}
+    container_name: ollama
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "127.0.0.1:11434:11434"
+      - "${HOME_SERVER_IP}:11434:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+    networks:
+      - ollama-data
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 8g
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  traefik:
+    image: traefik:${TRAEFIK_VERSION}
+    container_name: traefik
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "80:80"
+      - "443:443"
+      - "127.0.0.1:8080:8080"   # cloudflared entrypoint (host-local only)
+    environment:
+      - ACME_EMAIL=${ACME_EMAIL}
+      - TRAEFIK_CERTIFICATESRESOLVERS_CLOUDFLARE_ACME_EMAIL=${ACME_EMAIL}
+      - TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL=${ACME_EMAIL}
+      - QACEY_DOMAIN=${QACEY_DOMAIN}
+      - CF_DNS_API_TOKEN=${CF_DNS_API_TOKEN}
+      - DESEC_TOKEN=${DESEC_TOKEN}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /mnt/ssd/qacey/traefik/certs/acme.json:/acme.json
+      - ${PLATFORM_DIR}/infrastructure/traefik/config/traefik.yml:/traefik.yml:ro
+      - ${PLATFORM_DIR}/infrastructure/traefik/config/dynamic:/dynamic:ro
+      - /mnt/ssd/qacey/traefik/logs:/var/log/traefik
+    extra_hosts:
+      - "host-gateway:host-gateway"
+      - "host.docker.internal:${HOME_SERVER_IP}"
+    networks:
+      qacey-proxy:
+        ipv4_address: ${TRAEFIK_PROXY_IP}   # fixed IP — used by wireguard-home DNAT rules
+      qacey-internal:
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=qacey-proxy"
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /dynamic/middlewares.yml && traefik healthcheck --ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  cloudflared:
+    image: cloudflare/cloudflared:${CLOUDFLARED_VERSION}
+    container_name: cloudflared
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    # NOTE (U-11): cloudflared is kept as fallback during WireGuard migration.
+    # Remove this service after WireGuard tunnel is verified stable.
+    # See aidlc-docs/construction/u-11/u-11-design.md — "Cloudflared removal (deferred)"
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    networks:
+      - qacey-proxy
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── Platform additions: Paperless, MCP + Actual ─────────────────────────
+
+  paperless-postgres:
+    image: postgres:${POSTGRES_VERSION}
+    container_name: paperless-postgres
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      POSTGRES_USER: paperless
+      POSTGRES_PASSWORD: ${PAPERLESS_DB_PASSWORD}
+      POSTGRES_DB: paperless
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    volumes:
+      - /mnt/ssd/qacey/postgres/paperless:/var/lib/postgresql/data
+    networks:
+      - paperless-data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U paperless -d paperless || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  paperless-redis:
+    image: redis:${REDIS_VERSION}
+    container_name: paperless-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - paperless-data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 64m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  paperless:
+    image: ghcr.io/paperless-ngx/paperless-ngx:${PAPERLESS_VERSION}
+    container_name: paperless
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      PAPERLESS_REDIS: redis://paperless-redis:6379
+      PAPERLESS_DATABASE_HOST: paperless-postgres
+      PAPERLESS_DATABASE_USER: paperless
+      PAPERLESS_DATABASE_PASSWORD: ${PAPERLESS_DB_PASSWORD}
+      PAPERLESS_DATABASE_NAME: paperless
+      PAPERLESS_SECRET_KEY: ${PAPERLESS_SECRET_KEY}
+      PAPERLESS_URL: https://paperless.${QACEY_DOMAIN}
+      PAPERLESS_ALLOWED_HOSTS: paperless.${QACEY_DOMAIN}
+      PAPERLESS_CSRF_TRUSTED_ORIGINS: https://paperless.${QACEY_DOMAIN}
+      # Self-registration is disabled; create Paperless users administratively.
+      PAPERLESS_ACCOUNT_ALLOW_SIGNUPS: "false"
+      PAPERLESS_DISABLE_REGULAR_LOGIN: "false"
+      PAPERLESS_MEDIA_ROOT: /usr/src/paperless/media
+    volumes:
+      - /mnt/ssd/qacey/paperless/media:/usr/src/paperless/media
+      - /mnt/ssd/qacey/paperless/data:/usr/src/paperless/data
+    depends_on:
+      paperless-postgres:
+        condition: service_healthy
+      paperless-redis:
+        condition: service_healthy
+    networks:
+      - qacey-proxy
+      - qacey-internal
+      - paperless-data
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=qacey-proxy"
+      - "traefik.http.routers.paperless.rule=Host(`paperless.${QACEY_DOMAIN}`)"
+      - "traefik.http.routers.paperless.entrypoints=websecure"
+      - "traefik.http.routers.paperless.tls.certresolver=${CERT_RESOLVER}"
+      - "traefik.http.routers.paperless.middlewares=secure-headers@file"
+      - "traefik.http.routers.paperless-cf.rule=Host(`paperless.${QACEY_DOMAIN}`)"
+      - "traefik.http.routers.paperless-cf.entrypoints=cloudflared"
+      - "traefik.http.routers.paperless-cf.middlewares=secure-headers@file"
+      - "traefik.http.services.paperless.loadbalancer.server.port=8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  mcp-paperless:
+    # Dormant until PAPERLESS_API_TOKEN is configured. Start explicitly with
+    # --profile paperless-mcp after setting the token.
+    profiles: ["paperless-mcp"]
+    build:
+      context: ${PLATFORM_DIR}/services/mcp/paperless
+      dockerfile: Dockerfile
+    image: qacey/mcp-paperless:local
+    container_name: mcp-paperless
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      MCP_TRANSPORT: streamable-http
+      PAPERLESS_BASE_URL: http://paperless:8000
+      PAPERLESS_API_TOKEN: ${PAPERLESS_API_TOKEN:-}
+      FASTMCP_HOST: 0.0.0.0
+      FASTMCP_PORT: "8000"
+      HOST: 0.0.0.0
+    networks:
+      - qacey-proxy
+      - qacey-internal
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s --max-time 3 -o /dev/null http://127.0.0.1:8000/mcp"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── U-11: WireGuard (tunnel client — connects to Oracle VPS) ─────────────────
+  # Establishes an outbound WireGuard tunnel to the Oracle VPS.
+  # Oracle Traefik forwards all *.example.com traffic through this tunnel.
+  # No port forwarding needed on the home router — home server initiates outbound.
+  # Tunnel IP: 10.100.0.2/24 (Oracle VPS is 10.100.0.1)
+  wireguard-home:
+    image: lscr.io/linuxserver/wireguard:${WIREGUARD_VERSION}
+    container_name: wireguard-home
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Australia/Sydney
+    volumes:
+      - /mnt/ssd/qacey/wireguard/home:/config
+      - /lib/modules:/lib/modules:ro
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+    networks:
+      - qacey-proxy
+      - qacey-internal
+    mem_limit: 64m
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── U-09: AdGuard Home (local DNS + DHCP — split-horizon for *.example.com) ──
+  # network_mode: host is required for DHCP — AdGuard needs to bind to the physical
+  # LAN interface (eno1) to broadcast DHCP leases. With bridge networking it only
+  # sees Docker interfaces and cannot serve DHCP to LAN devices.
+  # DNS (port 53) and web UI (port 3000) are also bound directly on the host.
+  adguard:
+    image: adguard/adguardhome:${ADGUARD_VERSION}
+    container_name: adguard
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - /mnt/ssd/qacey/adguard/conf:/opt/adguardhome/conf
+      - /mnt/ssd/qacey/adguard/work:/opt/adguardhome/work
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:3000/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── U-10: CrowdSec ──────────────────────────────────────────────────────────
+
+  crowdsec:
+    image: crowdsecurity/crowdsec:${CROWDSEC_VERSION}
+    container_name: crowdsec
+    restart: unless-stopped
+    environment:
+      # U-12: added appsec-virtual-patching + appsec-generic-rules for AppSec WAF
+      - COLLECTIONS=crowdsecurity/traefik crowdsecurity/http-dos crowdsecurity/appsec-virtual-patching crowdsecurity/appsec-generic-rules
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - SMTP_ENCRYPTION=${SMTP_ENCRYPTION}
+      - ALERT_EMAIL_FROM=${ALERT_EMAIL_FROM}
+      - ALERT_EMAIL_TO=${ALERT_EMAIL_TO}
+      - DISABLE_ONLINE_API=true
+    volumes:
+      - /mnt/ssd/qacey/crowdsec/config:/etc/crowdsec
+      - /mnt/ssd/qacey/crowdsec/data:/var/lib/crowdsec/data
+      - /mnt/ssd/qacey/traefik/logs:/var/log/traefik:ro
+      - ${PLATFORM_DIR}/infrastructure/crowdsec/acquis.yaml:/etc/crowdsec/acquis.yaml:ro
+      - ${PLATFORM_DIR}/infrastructure/crowdsec/notifications/email.yaml:/etc/crowdsec/notifications/email.yaml:ro
+      - ${PLATFORM_DIR}/infrastructure/crowdsec/profiles.yaml:/etc/crowdsec/profiles.yaml:ro
+    ports:
+      # U-12: AppSec listener — Traefik plugin forwards requests here for WAF inspection
+      - "127.0.0.1:7422:7422"
+    networks:
+      - qacey-proxy
+      - qacey-internal
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 384m
+    healthcheck:
+      test: ["CMD-SHELL", "cscli lapi status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # cs-traefik-bouncer removed in U-12 — replaced by maxlerebourg/crowdsec-bouncer-traefik-plugin
+  # which runs inside the Traefik process (no separate container needed).
+  # The plugin handles both IP banning (LAPI) and WAF inspection (AppSec on :7422).
+
+  # ── U-02: Immich stack ────────────────────────────────────────────────────
+
+  immich-server:
+    image: ghcr.io/immich-app/immich-server:${IMMICH_VERSION}
+    container_name: immich-server
+    restart: unless-stopped
+    extends:
+      file: hwaccel.transcoding.yml
+      service: quicksync
+    ports:
+      - "127.0.0.1:2283:2283"  # Expose for local bulk uploads (bypasses Traefik)
+    environment:
+      DB_HOSTNAME: immich-postgres
+      DB_USERNAME: immich
+      DB_PASSWORD: ${IMMICH_DB_PASSWORD}
+      DB_DATABASE_NAME: immich
+      REDIS_HOSTNAME: immich-redis
+      UPLOAD_LOCATION: /usr/src/app/upload
+    volumes:
+      - /mnt/hdd1/qacey/immich:/usr/src/app/upload
+    depends_on:
+      immich-postgres:
+        condition: service_healthy
+      immich-redis:
+        condition: service_healthy
+    networks:
+      - qacey-proxy
+      - qacey-internal
+      - immich-data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:2283/api/server/ping || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 3g
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=qacey-proxy"
+      - "traefik.http.routers.immich.rule=Host(`photos.${QACEY_DOMAIN}`)"
+      - "traefik.http.routers.immich.entrypoints=websecure"
+      - "traefik.http.routers.immich.tls.certresolver=${CERT_RESOLVER}"
+      - "traefik.http.routers.immich.middlewares=secure-headers@file"
+      - "traefik.http.routers.immich-cf.rule=Host(`photos.${QACEY_DOMAIN}`)"
+      - "traefik.http.routers.immich-cf.entrypoints=cloudflared"
+      - "traefik.http.routers.immich-cf.middlewares=secure-headers@file"
+      - "traefik.http.services.immich.loadbalancer.server.port=2283"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  immich-machine-learning:
+    image: ghcr.io/immich-app/immich-machine-learning:${IMMICH_VERSION}
+    container_name: immich-machine-learning
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - /mnt/ssd/qacey/immich-model-cache:/cache
+    networks:
+      - qacey-internal
+      - qacey-proxy
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:3003/ping')\" || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 4g
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  immich-redis:
+    image: redis:${REDIS_VERSION}
+    container_name: immich-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - immich-data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 64m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  immich-postgres:
+    # VectorChord migration completed; use the official lean image. The
+    # temporary legacy pgvecto.rs compatibility layer is no longer needed.
+    image: ghcr.io/immich-app/postgres:${IMMICH_POSTGRES_VERSION}
+    container_name: immich-postgres
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      POSTGRES_USER: immich
+      POSTGRES_PASSWORD: ${IMMICH_DB_PASSWORD}
+      POSTGRES_DB: immich
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    shm_size: 128mb
+    volumes:
+      - /mnt/ssd/qacey/postgres/immich:/var/lib/postgresql/data
+    networks:
+      - immich-data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U immich -d immich"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── U-02: Vaultwarden ─────────────────────────────────────────────────────
+
+  vaultwarden:
+    image: vaultwarden/server:${VAULTWARDEN_VERSION}
+    container_name: vaultwarden
+    restart: unless-stopped
+    environment:
+      DOMAIN: https://vault.${QACEY_DOMAIN}
+      ADMIN_TOKEN: ${VAULTWARDEN_ADMIN_TOKEN}
+      SIGNUPS_ALLOWED: "false"
+      # Google OAuth via Vaultwarden SSO (OIDC)
+      # SSO_ENABLED is only set to true when GOOGLE_CLIENT_ID is configured.
+      # Vaultwarden v1.36+ requires all three SSO vars when SSO_ENABLED=true.
+      SSO_ENABLED: ${VAULTWARDEN_SSO_ENABLED:-false}
+      SSO_ONLY: "false"
+      SSO_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      SSO_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      SSO_AUTHORITY: https://accounts.google.com
+      SSO_SCOPES: "openid profile email"
+    volumes:
+      - /mnt/ssd/qacey/vaultwarden:/data
+    networks:
+      - qacey-proxy
+      - qacey-internal
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:80/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=qacey-proxy"
+      - "traefik.http.routers.vaultwarden.rule=Host(`vault.${QACEY_DOMAIN}`)"
+      - "traefik.http.routers.vaultwarden.entrypoints=websecure"
+      - "traefik.http.routers.vaultwarden.tls.certresolver=${CERT_RESOLVER}"
+      - "traefik.http.routers.vaultwarden.middlewares=secure-headers@file"
+      - "traefik.http.routers.vaultwarden-cf.rule=Host(`vault.${QACEY_DOMAIN}`)"
+      - "traefik.http.routers.vaultwarden-cf.entrypoints=cloudflared"
+      - "traefik.http.routers.vaultwarden-cf.middlewares=secure-headers@file"
+      - "traefik.http.services.vaultwarden.loadbalancer.server.port=80"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  searxng:
+    image: searxng/searxng:${SEARXNG_VERSION}
+    container_name: searxng
+    restart: unless-stopped
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET_KEY}
+    volumes:
+      - ${PLATFORM_DIR}/infrastructure/searxng/settings.yml:/etc/searxng/settings.yml:ro
+    networks:
+      - qacey-proxy
+      - qacey-internal
+      - qacey-mcp-internal
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── SearXNG MCP — internal-only upstream Streamable HTTP adapter ──────────
+  # No host port, proxy network, Traefik route, or public DNS name by design.
+  mcp-searxng:
+    image: ${MCP_SEARXNG_IMAGE}
+    container_name: mcp-searxng
+    restart: unless-stopped
+    depends_on:
+      searxng:
+        condition: service_healthy
+    environment:
+      MCP_HTTP_PORT: "3000"
+      MCP_HTTP_HOST: 0.0.0.0
+      SEARXNG_URL: http://searxng:8080
+    networks:
+      - qacey-mcp-internal
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:3000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      - "traefik.enable=false"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── U-03: MCP — Intervals.icu ────────────────────────────────────────────
+
+  mcp-intervals:
+    build:
+      context: ${PLATFORM_DIR}/services/mcp/intervals
+      dockerfile: Dockerfile
+    image: qacey/mcp-intervals:local
+    container_name: mcp-intervals
+    restart: unless-stopped
+    environment:
+      MCP_TRANSPORT: streamable-http
+      FASTMCP_HOST: 0.0.0.0
+      FASTMCP_PORT: "8000"
+      API_KEY: ${INTERVALS_API_KEY_JUSTIN}
+      ATHLETE_ID: ${INTERVALS_ATHLETE_ID_JUSTIN}
+    networks:
+      - qacey-proxy
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import socket; socket.create_connection(('127.0.0.1', 8000), 2).close()\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── U-03: MCP — Crawl4AI (Admin MCP — self-hosted, free web scraping) ───
+
+  crawl4ai:
+    image: unclecode/crawl4ai:${CRAWL4AI_VERSION}
+    container_name: crawl4ai
+    restart: unless-stopped
+    shm_size: '1gb'
+    environment:
+      - CRAWL4AI_API_TOKEN=${CRAWL4AI_API_TOKEN}
+    networks:
+      - qacey-proxy
+      - qacey-internal
+    deploy:
+      resources:
+        limits:
+          memory: 2048m
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import socket; socket.create_connection(('127.0.0.1', 11235), 3).close()\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  mcp-crawl4ai:
+    build:
+      context: ${PLATFORM_DIR}/services/mcp/crawl4ai
+      dockerfile: Dockerfile
+    image: qacey/mcp-crawl4ai:local
+    container_name: mcp-crawl4ai
+    restart: unless-stopped
+    depends_on:
+      - crawl4ai
+    environment:
+      CRAWL4AI_BASE_URL: http://crawl4ai:11235
+      CRAWL4AI_API_TOKEN: ${CRAWL4AI_API_TOKEN}
+      MCP_TRANSPORT: streamable-http
+      FASTMCP_HOST: 0.0.0.0
+      FASTMCP_PORT: "8000"
+      HOST: 0.0.0.0
+    networks:
+      - qacey-proxy
+      - qacey-internal
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import socket; socket.create_connection(('127.0.0.1', 8000), 2).close()\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  mcp-academic-papers:
+    build:
+      context: ${PLATFORM_DIR}/services/mcp/academic-papers
+      dockerfile: Dockerfile
+    image: qacey/mcp-academic-papers:local
+    container_name: mcp-academic-papers
+    restart: unless-stopped
+    environment:
+      FASTMCP_HOST: 0.0.0.0
+      FASTMCP_PORT: "8000"
+      PAPER_SEARCH_MCP_UNPAYWALL_EMAIL: ${PAPER_SEARCH_MCP_UNPAYWALL_EMAIL:-}
+      PAPER_SEARCH_MCP_CORE_API_KEY: ${PAPER_SEARCH_MCP_CORE_API_KEY:-}
+      PAPER_SEARCH_MCP_SEMANTIC_SCHOLAR_API_KEY: ${PAPER_SEARCH_MCP_SEMANTIC_SCHOLAR_API_KEY:-}
+      PAPER_SEARCH_MCP_GOOGLE_SCHOLAR_PROXY_URL: ${PAPER_SEARCH_MCP_GOOGLE_SCHOLAR_PROXY_URL:-}
+      PAPER_SEARCH_MCP_DOAJ_API_KEY: ${PAPER_SEARCH_MCP_DOAJ_API_KEY:-}
+      PAPER_SEARCH_MCP_ZENODO_ACCESS_TOKEN: ${PAPER_SEARCH_MCP_ZENODO_ACCESS_TOKEN:-}
+    networks:
+      - qacey-proxy
+      - qacey-internal
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import socket; socket.create_connection(('127.0.0.1', 8000), 2).close()\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:${HOMEASSISTANT_VERSION}
+    container_name: homeassistant
+    restart: unless-stopped
+    privileged: true
+    network_mode: host
+    environment:
+      - TZ=${TZ:-Australia/Sydney}
+    volumes:
+      - /mnt/ssd/qacey/homeassistant/config:/config
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8123/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── U-14: Scrutiny drive health monitoring ───────────────────────────────────
+  scrutiny:
+    image: ghcr.io/analogj/scrutiny:${SCRUTINY_VERSION}
+    container_name: scrutiny
+    restart: unless-stopped
+    privileged: true
+    cap_add:
+      - SYS_RAWIO
+    devices:
+      - /dev/sda
+      - /dev/sdb
+      - /dev/sdc
+      - /dev/sdd
+      - /dev/nvme0n1
+    volumes:
+      - /run/udev:/run/udev:ro
+      - /mnt/ssd/qacey/scrutiny:/opt/scrutiny/config
+      - scrutiny-influxdb:/opt/scrutiny/influxdb
+    networks:
+      - qacey-proxy
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/api/health || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=qacey-proxy"
+      - "traefik.http.routers.scrutiny.rule=Host(`drive-health.${QACEY_DOMAIN}`)"
+      - "traefik.http.routers.scrutiny.entrypoints=websecure"
+      - "traefik.http.routers.scrutiny.tls.certresolver=${CERT_RESOLVER}"
+      - "traefik.http.routers.scrutiny.middlewares=secure-headers@file"
+      - "traefik.http.routers.scrutiny-cf.rule=Host(`drive-health.${QACEY_DOMAIN}`)"
+      - "traefik.http.routers.scrutiny-cf.entrypoints=cloudflared"
+      - "traefik.http.routers.scrutiny-cf.middlewares=secure-headers@file"
+      - "traefik.http.services.scrutiny.loadbalancer.server.port=8080"
+
+networks:
+  qacey-proxy:
+    name: qacey-proxy
+    external: true
+  qacey-internal:
+    name: qacey-internal
+    external: true
+  qacey-mcp-internal:
+    name: qacey-mcp-internal
+    internal: true
+  ollama-data:
+    name: qacey-ollama-data
+    internal: true
+  immich-data:
+    name: qacey-immich-data
+    internal: true
+  paperless-data:
+    name: qacey-paperless-data
+    internal: true
+
+volumes:
+  ollama-models:
+    name: qacey-platform_ollama-data
+    external: true
+  scrutiny-influxdb:
+  # U-16: Immich Power Tools data volume

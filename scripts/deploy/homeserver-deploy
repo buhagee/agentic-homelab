@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Root-owned dispatcher for the homeserver self-hosted runner.
+# Usage: homeserver-deploy <app> <40-character-sha>
+set -euo pipefail
+
+APP="${1:-}"
+SHA="${2:-}"
+
+if [[ $# -ne 2 ]]; then
+  echo "Usage: $0 <app> <40-character-sha>" >&2
+  exit 2
+fi
+
+if [[ ! "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
+  echo "ERROR: invalid SHA" >&2
+  exit 2
+fi
+
+case "$APP" in
+  agentic-homelab|qacey-platform)
+    exec runuser -u buhagiar -- \
+      __PLATFORM_DIR__/scripts/deploy/auto-deploy.sh "$SHA"
+    ;;
+  *)
+    echo "ERROR: unknown app: $APP" >&2
+    exit 2
+    ;;
+esac

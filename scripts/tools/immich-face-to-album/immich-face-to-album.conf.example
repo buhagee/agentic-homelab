@@ -1,0 +1,58 @@
+# =============================================================================
+# immich-face-to-album.conf.example
+# Copy to immich-face-to-album.conf and fill in real UUIDs.
+#
+# Credentials live in immich-face-to-album.env — not here.
+# Each mapping declares USER (JUSTIN or ANNIQUE) to select which API key to use.
+# The plugin only sees photos owned by that user's account.
+#
+# HOW TO GET IDs:
+#   Person ID : Immich UI → Explore → People → click person → UUID in URL
+#   Album ID  : Immich UI → Albums → open album → UUID in URL
+#
+# NOTE: Person UUIDs are per-account. The same physical person will have a
+# different UUID in Justin's library vs Annique's library.
+# Albums must already exist before running the sync.
+# =============================================================================
+
+# Justin's photos of himself
+MAPPING_JUSTIN_USER="JUSTIN"
+MAPPING_JUSTIN_FACES="<justin-person-uuid-in-justins-library>"
+MAPPING_JUSTIN_ALBUM="<justin-album-uuid>"
+MAPPING_JUSTIN_LABEL="Justin (from Justin's library)"
+MAPPING_JUSTIN_REQUIRE_ALL=false
+
+# Annique's photos of herself
+MAPPING_ANNIQUE_USER="ANNIQUE"
+MAPPING_ANNIQUE_FACES="<annique-person-uuid-in-anniiques-library>"
+MAPPING_ANNIQUE_ALBUM="<annique-album-uuid>"
+MAPPING_ANNIQUE_LABEL="Annique (from Annique's library)"
+MAPPING_ANNIQUE_REQUIRE_ALL=false
+
+# Justin's photos of Annique → same Annique album
+# MAPPING_JUSTIN_OF_ANNIQUE_USER="JUSTIN"
+# MAPPING_JUSTIN_OF_ANNIQUE_FACES="<annique-person-uuid-in-justins-library>"
+# MAPPING_JUSTIN_OF_ANNIQUE_ALBUM="<annique-album-uuid>"
+# MAPPING_JUSTIN_OF_ANNIQUE_LABEL="Annique (from Justin's library)"
+# MAPPING_JUSTIN_OF_ANNIQUE_REQUIRE_ALL=false
+
+# Annique's photos of Justin → same Justin album
+# MAPPING_ANNIQUE_OF_JUSTIN_USER="ANNIQUE"
+# MAPPING_ANNIQUE_OF_JUSTIN_FACES="<justin-person-uuid-in-anniiques-library>"
+# MAPPING_ANNIQUE_OF_JUSTIN_ALBUM="<justin-album-uuid>"
+# MAPPING_ANNIQUE_OF_JUSTIN_LABEL="Justin (from Annique's library)"
+# MAPPING_ANNIQUE_OF_JUSTIN_REQUIRE_ALL=false
+
+# Kids — Justin's library
+# MAPPING_KIDS_JUSTIN_USER="JUSTIN"
+# MAPPING_KIDS_JUSTIN_FACES="<kid1-uuid> <kid2-uuid>"
+# MAPPING_KIDS_JUSTIN_ALBUM="<kids-album-uuid>"
+# MAPPING_KIDS_JUSTIN_LABEL="Kids (from Justin's library)"
+# MAPPING_KIDS_JUSTIN_REQUIRE_ALL=false
+
+# Kids — Annique's library
+# MAPPING_KIDS_ANNIQUE_USER="ANNIQUE"
+# MAPPING_KIDS_ANNIQUE_FACES="<kid1-uuid> <kid2-uuid>"
+# MAPPING_KIDS_ANNIQUE_ALBUM="<kids-album-uuid>"
+# MAPPING_KIDS_ANNIQUE_LABEL="Kids (from Annique's library)"
+# MAPPING_KIDS_ANNIQUE_REQUIRE_ALL=false
