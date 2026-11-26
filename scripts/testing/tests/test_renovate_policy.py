@@ -134,6 +134,27 @@ class RenovatePolicyTests(unittest.TestCase):
         )
         self.assertIn('"context": "opencode-smoke"', ruleset)
 
+    def test_openchamber_release_is_tracked_and_automerges_patch_minor(self):
+        managers = [
+            m for m in self.config["customManagers"]
+            if m.get("depNameTemplate") == "@openchamber/web"
+        ]
+        self.assertEqual(len(managers), 1)
+        self.assertEqual(managers[0]["datasourceTemplate"], "npm")
+        rules = [
+            rule for rule in self.config["packageRules"]
+            if "@openchamber/web" in rule.get("matchPackageNames", [])
+        ]
+        self.assertEqual(len(rules), 2)
+        default_rule, major_rule = rules
+        self.assertTrue(default_rule["automerge"])
+        self.assertIn(
+            "python3 scripts/maintenance/refresh-openchamber-release.py {{{newVersion}}}",
+            default_rule["postUpgradeTasks"]["commands"],
+        )
+        self.assertEqual(major_rule["matchUpdateTypes"], ["major"])
+        self.assertFalse(major_rule["automerge"])
+
 
 if __name__ == "__main__":
     unittest.main()
