@@ -13,6 +13,7 @@ STATELESS = {
     "unclecode/crawl4ai",
     "ghcr.io/analogj/scrutiny",
     "quay.io/oauth2-proxy/oauth2-proxy",
+    "caddy",
 }
 STATEFUL = {
     "nousresearch/hermes-agent",

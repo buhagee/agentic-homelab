@@ -118,8 +118,9 @@ The deploy script:
    are preserved and never cleaned.
 2. Verifies the SHA is on `origin/main` and is the current tip.
 3. If the target SHA matches the last successfully deployed SHA recorded in
-   `~/.local/state/qacey-deploy/last-good`, runs only a healthcheck and exits
-   without pulling or recreating anything.
+   `~/.local/state/qacey-deploy/last-good`, checks platform health and retries
+   any explicitly enrolled native development update. It does not pull or
+   recreate the main platform stack.
 4. Dumps Immich, Paperless SQLite, and both Mnemo databases before changing
    images. The preflight accepts PostgreSQL (`.sql.gz`) or Paperless SQLite
    (`.sqlite3.gz`) dumps newer than two hours.
@@ -127,6 +128,9 @@ The deploy script:
 6. Refreshes the Docker controller approval snapshot.
 7. Pulls and updates the stack with `--wait`.
 8. Runs the platform healthcheck.
+9. Records platform success, then invokes the optional native development
+   updater if installed. Its failures alert separately and do not trigger
+   platform rollback. See [managed native updates](development.md#managed-updates-through-qacey).
 
 The data-store images are digest-pinned in `versions.env`
 (`IMMICH_POSTGRES_VERSION`, `MNEMO_PGVECTOR_VERSION`, `POSTGRES_VERSION`,
@@ -137,11 +141,15 @@ Stateless failures roll back to the previous commit. Stateful failures leave
 the containers in place, write a failed-SHA marker, and alert; restore the
 database manually from `/mnt/hdd1/qacey/db-backups` if needed.
 
+## Reconciliation timer
+
 Rapid merges do not need one deploy per commit. The newest `main` tip contains
 all earlier commits, so an older dispatch is skipped as `superseded`. The
 host also runs `qacey-deploy-reconcile.timer` every 10 minutes; it fetches
 `origin/main` and deploys the tip if it differs from `last-good`. That catches
-dropped dispatches and GitHub outages.
+dropped dispatches and GitHub outages. On hosts enrolled for native development
+updates, it also retries a pending native update when the platform is already at
+that tip, using the same platform lock and health check.
 
 Install the reconciliation timer:
 

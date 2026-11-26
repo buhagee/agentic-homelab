@@ -4,6 +4,29 @@
 - **Scope:** global `opencode-v2` config and project-local additions.
 - **Stored at:** `infrastructure/opencode/config/`, bind-mounted read-only.
 
+## Shared native Codex/OpenChamber
+
+The [native Codex runbook](codex.md) defines a separate development account and
+independent clones. Its runtime is opt-in; this OpenCode configuration and its
+Docker-only MCP URLs are not automatically imported. The
+[shared development runbook](development.md) adds native OpenChamber on the same
+account. Personal-agent MCP migration and Hermes retirement remain separate
+follow-up work. Share portable `.agents/skills`, repository guidance and the
+nonsecret MCP baseline; keep plugin runtimes, models, approvals, authentication
+and history native to each harness. OpenChamber UI additions stay OpenCode-local
+until deliberately promoted. Baseline sync preserves unmanaged fields and rejects
+managed drift. After explicit enrollment for managed updates, platform auto-deploy
+applies the reviewed baseline and native runtime changes when the environment is
+idle. Active coding work defers the update; Codex's tmux service is never restarted.
+Provider authentication and client-local plugins/settings remain user-owned.
+
+Use Superpowers for implementation and explicitly selected Gstack lenses for
+planning/review. Install a native Codex workflow once under the dedicated account;
+do not combine a plugin-owned install with manual duplicate registrations. The
+existing `setup-gstack-lenses.sh` is OpenCode-specific. Native Gstack curation must
+check actual discovered skill names and exclude the router/upgrade and other
+non-approved skills, including nested runtime copies.
+
 ## Global core
 
 | Role | Tool | Stars | Notes |

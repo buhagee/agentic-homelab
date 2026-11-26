@@ -64,6 +64,20 @@ bash scripts/start.sh
 Real secrets belong in `secrets/.env`. Traefik and OAuth templates are rendered
 from `secrets/.env` at start time; rendered files are gitignored.
 
+## Optional shared native development
+
+[Codex and OpenChamber on the home server](docs/operations/development.md) adds
+OpenCode chat and a Codex terminal behind authenticated HTTPS, using one dedicated
+development account and independent clones. Portable skills, guidance and common
+MCP definitions are shared; each harness keeps its own login, plugins and history.
+The [Codex foundation](docs/operations/codex.md) supplies account/runtime onboarding.
+
+Initial setup, login and activation are opt-in. After enrolling the installed
+environment for managed updates, successful Qacey deployments reconcile native
+runtimes, shared configuration and the HTTPS gateway. Busy sessions defer the
+update to a later reconciliation pass. Existing operator checkouts, Hermes and
+the Docker OpenCode stack remain unchanged by this native setup.
+
 ## Security posture
 
 - No credentials in git. Secret values live in `secrets/.env` on the host.
