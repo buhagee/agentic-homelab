@@ -1,0 +1,8 @@
+{
+  "operator": "REPLACE_WITH_DEPLOYMENT_OPERATOR",
+  "containers": {},
+  "units": {
+    "qacey-deploy-reconcile.service": ["status"],
+    "qacey-db-backup.service": ["status"]
+  }
+}
