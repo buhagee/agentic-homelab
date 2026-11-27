@@ -499,6 +499,13 @@ class Deployment:
         credentials = self.host.credentials()
         self.host.verify_managed(self.state['managed_files'])
         digest = fingerprint(source, self.policy)
+        applied = self.state['applied_revision']
+        if applied and self.state['applied_digest'] != digest:
+            # Only a verified prior installation can supply the baseline.
+            # A newer source may contain real application changes too.
+            previous = source if applied == requested else self.source.checkout(applied, recovery=True)
+            if fingerprint(previous, self.policy, legacy=True) == self.state['applied_digest']:
+                self.state['applied_digest'] = fingerprint(previous, self.policy)
         self.state.update(desired_revision=requested, desired_digest=digest)
         self.persist()
         if digest == self.state['applied_digest']:

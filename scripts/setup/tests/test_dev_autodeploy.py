@@ -373,6 +373,25 @@ class LifecycleTests(Fixture):
         self.assertEqual(state['reason'], 'inputs-unchanged-no-repair-attempted')
         self.assertFalse(any(c[0] in ('publish', 'close', 'preflight') for c in self.host.calls))
 
+    def test_legacy_digest_migrates_from_applied_source_on_helper_only_update(self):
+        candidate = self.tree.parent / B
+        shutil.copytree(self.tree, candidate)
+        worker = candidate / 'infrastructure/dev-agent/deployment_host.py'
+        worker.write_text(worker.read_text() + '\n# changed worker\n')
+        legacy = core.fingerprint(self.tree, self.p, legacy=True)
+        self.source.tip = B
+        for app_changed in (False, True):
+            if app_changed:
+                (candidate / 'infrastructure/dev-agent/qacey-dev').write_text('changed launcher')
+            state = core.empty_state()
+            state.update(applied_revision=A, applied_digest=legacy)
+            core.save(self.root / core.STATE / 'state.json', state)
+            with patch.object(self.source, 'checkout', side_effect=lambda rev, **kw: {A: self.tree, B: candidate}[rev]):
+                _, state = self.apply(B)
+            self.assertEqual(state['applied_revision'], A)
+            self.assertEqual(state['applied_digest'], core.fingerprint(self.tree, self.p))
+            self.assertEqual(state['status'], 'pending' if app_changed else 'unchanged')
+
     def test_failed_publication_keeps_original_journal_and_recovers_same_verified_source(self):
         self.quiet()
         self.host.fail = 'publish'
@@ -697,12 +716,18 @@ class BootstrapTests(Fixture):
         state = core.load_state()
         state.update(managed_files={'existing': 'recorded'}, paused=True)
         core.save(state_path, state)
-        before = (state_path.read_bytes(), policy_path.read_bytes())
-        with patch.object(core, 'Source', return_value=source), patch.object(self.bootstrap, 'validate_rule'):
+        before = state_path.read_bytes()
+        lock = core.deployment_lock
+        def after_operator_rotation():
+            core.save(policy_path, dict(self.p, operator='new-operator'))
+            return lock()
+        with patch.object(core, 'deployment_lock', side_effect=after_operator_rotation), \
+             patch.object(core, 'Source', return_value=source), patch.object(self.bootstrap, 'validate_rule'):
             self.bootstrap.repair(A)
-        self.assertEqual(before, (state_path.read_bytes(), policy_path.read_bytes()))
+        self.assertEqual(before, state_path.read_bytes())
+        self.assertEqual(core.load_policy(), dict(self.p, operator='new-operator'))
         self.assertEqual(source.calls, [('fetch', A), ('descendant', None, A), ('checkout', A, False)])
-        self.assertIn(' apply *', (self.root / 'etc/sudoers.d/qacey-dev-deploy').read_text())
+        self.assertIn('\nnew-operator ALL=', (self.root / 'etc/sudoers.d/qacey-dev-deploy').read_text())
         self.assertTrue((self.root / 'usr/local/sbin/qacey-dev-deploy').is_file())
         state['transaction'] = dict(revision=A, digest='b' * 64, phase='starting',
                                     original=lifecycle(), credentials={})

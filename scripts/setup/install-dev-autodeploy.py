@@ -98,10 +98,10 @@ def repair(revision):
     """Repair only the launcher and delegation, without re-enrolling the host."""
     if not core.SHA.fullmatch(revision):
         raise core.Blocked('invalid-revision')
-    policy = core.load_policy()
-    if policy is None:
-        raise core.Blocked('repair-requires-enrollment')
     with core.deployment_lock():
+        policy = core.load_policy()
+        if policy is None:
+            raise core.Blocked('repair-requires-enrollment')
         state = core.load_state()
         if state['transaction'] is not None:
             raise core.Blocked('finish-recorded-native-transaction-before-helper-repair')
