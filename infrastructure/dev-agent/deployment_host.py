@@ -196,7 +196,9 @@ class Host:
             raise core.Blocked('unexpected-gateway-container-id')
         result = {}
         # Inspect only selected nonsecret fields; full Docker inspect includes env secrets.
-        template = ('{"id":{{json .Id}},"project":{{json (index .Config.Labels "com.docker.compose.project")}},'
+        # Docker's typed inspect result uses ID. Id selects the raw JSON
+        # fallback, where State.Health is absent on containers without a check.
+        template = ('{"id":{{json .ID}},"project":{{json (index .Config.Labels "com.docker.compose.project")}},'
                     '"service":{{json (index .Config.Labels "com.docker.compose.service")}},'
                     '"status":{{json .State.Status}},"running":{{json .State.Running}},'
                     '"paused":{{json .State.Paused}},"image":{{json .Config.Image}},'
@@ -386,8 +388,7 @@ class Host:
         self.check_records()
 
     def install_runtime_and_sync(self):
-        for command, label in ((['/usr/local/bin/qacey-codex', 'install-runtime', '--apply'], 'codex-runtime'),
-                               (['/usr/local/bin/qacey-dev', 'install-runtime', '--apply'], 'native-runtime'),
+        for command, label in ((['/usr/local/bin/qacey-dev', 'install-runtime', '--apply'], 'native-runtime'),
                                (['/usr/local/bin/qacey-dev', 'sync', '--apply'], 'shared-configuration')):
             core.run(command, label, identity=self.policy, timeout=1800)
 
@@ -404,10 +405,6 @@ class Host:
     def health(self, original):
         self.check_records()
         self.credentials()
-        result = core.run(['/usr/local/bin/qacey-codex', 'version'], 'codex-version', identity=self.policy)
-        release = core.json_load(self.root / 'usr/local/lib/qacey-codex/release.json')
-        if result.stdout.strip() != 'codex-cli ' + release['version']:
-            raise core.Blocked('codex-version-mismatch')
         # Verify native version and selected binary as the user, even when stopped.
         code = ('import sys; sys.path.insert(0,"/usr/local/lib/qacey-dev"); '
                 'import dev_context, install_runtime; a,r=dev_context.current(); '

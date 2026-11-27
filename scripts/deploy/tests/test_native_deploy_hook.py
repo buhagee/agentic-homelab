@@ -133,7 +133,7 @@ exit "$NATIVE_RESULT"
         target = self.new_target()
         self.env["NATIVE_RESULT"] = "73"
         result = self.run_deploy(target)
-        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.git("rev-parse", "HEAD"), target)
         self.assertEqual((self.state / "last-good").read_text().strip(), target)
         self.assertFalse((self.state / "failed-sha").exists())
@@ -192,7 +192,7 @@ exit "$NATIVE_RESULT"
     def test_native_failure_on_unchanged_platform_remains_retryable(self):
         self.env["NATIVE_RESULT"] = "73"
         result = self.run_deploy(self.base)
-        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse((self.state / "failed-sha").exists())
         self.env["NATIVE_RESULT"] = "0"
         result = self.run_deploy(self.base)

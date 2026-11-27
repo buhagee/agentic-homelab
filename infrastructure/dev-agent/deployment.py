@@ -327,22 +327,25 @@ class Source:
                 if (self.git(['-C', str(candidate), 'rev-parse', '--verify', 'HEAD^{commit}']).stdout.strip() != revision
                         or self.git(['-C', str(candidate), 'status', '--porcelain', '--untracked-files=all']).stdout):
                     raise Blocked('trusted-source-staging-verification-failed')
-                for relative in INPUTS:
-                    trusted(candidate / relative)
                 candidate.rename(path)
         self.tree_trusted(path)
         actual = self.git(['-C', str(path), 'rev-parse', '--verify', 'HEAD^{commit}']).stdout.strip()
         changes = self.git(['-C', str(path), 'status', '--porcelain', '--untracked-files=all']).stdout
         if actual != revision or changes:
             raise Blocked('trusted-source-revision-or-files-changed')
-        for relative in INPUTS:
-            trusted(path / relative)
+        # The verified worker for this revision validates its own input list.
+        # Future revisions can retire files that this worker still knows about.
         return path
 
 
-def fingerprint(source, policy):
+def fingerprint(source, policy, *, legacy=False):
     digest = hashlib.sha256()
-    for relative in sorted(set(INPUTS)):
+    inputs = set(INPUTS)
+    if not legacy:
+        inputs.discard('scripts/setup/install-dev-autodeploy.py')
+        inputs.difference_update('infrastructure/dev-agent/' + name
+                                 for name in ('qacey-dev-deploy', *UPDATER_FILES[:-1]))
+    for relative in sorted(inputs):
         path = source / relative
         parents(path)
         trusted(path)
@@ -392,11 +395,22 @@ def install_updater_assets(assets, *, trusted_source=True):
     executable = ('/usr/local/lib/qacey-dev-deploy/releases/' + digest + '/deployment.py').encode()
     if launcher.count(original) != 1:
         raise Blocked('invalid-native-updater-launcher')
-    atomic(HOST_ROOT / 'usr/local/sbin/qacey-dev-deploy', launcher.replace(original, executable), 0o755)
+    target = HOST_ROOT / 'usr/local/sbin/qacey-dev-deploy'
+    parents(target)
+    data = launcher.replace(original, executable)
+    if trusted(target, optional=True) is not None and target.read_bytes() == data:
+        return False
+    atomic(target, data, 0o755)
+    return True
 
 
 def refresh_updater(source):
-    install_updater_assets(source / 'infrastructure/dev-agent')
+    assets = source / 'infrastructure/dev-agent'
+    compat = json_load(assets / 'updater-compat.json')
+    if (compat != {'launcher': 1, 'policy': 1, 'state': 1}
+            or any(type(value) is not int for value in compat.values())):
+        raise Blocked('incompatible-helper-requires-explicit-enrollment')
+    return install_updater_assets(assets)
 
 
 def empty_state():
@@ -446,8 +460,9 @@ class Deployment:
     def apply(self, requested):
         try:
             return self._apply(requested)
-        except Exception:
-            self.state.update(status='failed', reason='fix-forward-or-local-review-required', quiet=None)
+        except Exception as exc:
+            reason = str(exc) if isinstance(exc, Blocked) else 'fix-forward-or-local-review-required'
+            self.state.update(status='failed', reason=reason, quiet=None)
             self.persist()
             raise
 
@@ -463,20 +478,34 @@ class Deployment:
             if requested != transaction['revision']:
                 self.source.fetch(requested)
             source = self.source.checkout(transaction['revision'], recovery=True)
-            if fingerprint(source, self.policy) != transaction['digest']:
+            # The previous worker could switch launchers mid-publication. Read
+            # its exact journal digest without rewriting the saved transaction.
+            if (fingerprint(source, self.policy) != transaction['digest']
+                    and fingerprint(source, self.policy, legacy=True) != transaction['digest']):
                 raise Blocked('interrupted-source-or-policy-changed')
             self.host.close_ingress(transaction['original'])
             self.host.check_records(recovery=True)
             if self.host.credentials() != transaction['credentials']:
                 raise Blocked('credentials-changed-during-interrupted-update')
             return self.finish(source, recovering=True)
-        self.host.check_records()
-        credentials = self.host.credentials()
-        self.host.verify_managed(self.state['managed_files'])
         self.source.fetch(requested)
         self.source.descendant(self.state['applied_revision'], requested)
         source = self.source.checkout(requested)
+        if refresh_updater(source):
+            # Do not create a journal with code from the superseded worker.
+            # The next reconcile enters via the newly published launcher.
+            return self.pending('helper-refreshed')
+        self.host.check_records()
+        credentials = self.host.credentials()
+        self.host.verify_managed(self.state['managed_files'])
         digest = fingerprint(source, self.policy)
+        applied = self.state['applied_revision']
+        if applied and self.state['applied_digest'] != digest:
+            # Only a verified prior installation can supply the baseline.
+            # A newer source may contain real application changes too.
+            previous = source if applied == requested else self.source.checkout(applied, recovery=True)
+            if fingerprint(previous, self.policy, legacy=True) == self.state['applied_digest']:
+                self.state['applied_digest'] = fingerprint(previous, self.policy)
         self.state.update(desired_revision=requested, desired_digest=digest)
         self.persist()
         if digest == self.state['applied_digest']:
@@ -540,7 +569,6 @@ class Deployment:
                     raise Blocked('stopped-application-was-started-during-update')
                 self.host.stop_app(current)
                 self.host.publish(source)
-                refresh_updater(source)
                 self.host.install_runtime_and_sync()
                 self.host.reload_units()
                 transaction['phase'] = 'starting'
@@ -570,6 +598,11 @@ class Deployment:
 
 
 def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    # sudo-rs matches a trailing wildcard. Enforce the complete delegated
+    # argument vector here, before argparse handles help or option terminators.
+    if argv[:1] == ['apply'] and (len(argv) != 2 or not SHA.fullmatch(argv[1])):
+        raise Blocked('invalid-revision')
     parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     commands = parser.add_subparsers(dest='action', required=True)
     commands.add_parser('apply', allow_abbrev=False).add_argument('revision')
@@ -577,8 +610,6 @@ def main(argv=None):
     commands.add_parser('pause', allow_abbrev=False)
     commands.add_parser('resume', allow_abbrev=False)
     args = parser.parse_args(argv)
-    if args.action == 'apply' and not SHA.fullmatch(args.revision):
-        raise Blocked('invalid-revision')
     if os.geteuid() != ROOT_UID:
         raise Blocked('root-required')
     policy = load_policy()

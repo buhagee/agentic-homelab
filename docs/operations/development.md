@@ -454,10 +454,47 @@ The development account receives no sudo permission. Merging changes to these
 deployment scripts therefore authorizes their use by this enrolled privileged
 path; review them accordingly.
 
+On hosts using sudo-rs, a traditional sudoers argument regex is not portable.
+The generated rule delegates only the root-owned helper's `apply` prefix. The
+helper requires exactly one lowercase 40-character commit argument before it
+opens policy or state. After installing the reviewed rule, test **as the
+reconciliation operator**, from an independent maintenance terminal:
+
+```sh
+sudo -k -n /usr/local/sbin/qacey-dev-deploy apply invalid
+```
+
+The expected result is a nonzero exit with `Native development deployment:
+invalid-revision`. This proves the real helper ran without authentication or
+a cached ticket. An authentication error instead means delegation failed.
+The invalid revision cannot start a deployment or write the journal.
+
+If an **already enrolled** host cannot invoke its worker, use the independent
+operator maintenance terminal. Inspect `sudo qacey-dev-deploy status` first.
+Finish any open transaction using its recorded source. With no open transaction,
+run the following from a verified, root-owned checkout of the reviewed main
+revision, after it has merged:
+
+```sh
+sudo python3 -I -B scripts/setup/install-dev-autodeploy.py \
+  --repair-helper "$(git rev-parse HEAD)" --apply
+```
+
+Repair fetches that exact main tip through the enrolled private source, checks
+compatibility, and publishes the launcher before the parsed sudoers fragment.
+It keeps the existing pause flag, drift baseline, route attestation and journal.
+Repeat the uncached invalid-revision probe above, then let the timer perform
+normal activity checks. Never clear a busy result to force an upgrade.
+
 ### What happens after a merge
 
-The main platform deployment and health check finish first. The native updater
-then compares the inputs it consumes with the last successful native deployment.
+The main platform deployment and health check finish first. A native failure
+gets its own alert and does not change the platform result. With no transaction
+in progress, the native updater can publish a compatible worker from the exact
+verified main revision even while the application is busy. After the atomic
+launcher switch it returns `helper-refreshed`; the next invocation runs the new
+worker. A paused deployment stays paused. An open journal keeps its worker and
+target. The worker compares application inputs with the last successful native deployment.
 Documentation and unrelated platform changes do not reinstall runtimes or restart
 native services. An unchanged input digest is a no-op, not a repair of runtime
 drift. Changes to root-managed installation files are rejected for operator

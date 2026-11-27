@@ -14,9 +14,10 @@ isolated tests is not permission to deploy, restart services, or read credential
 
 ## Shared native development
 
-The optional Codex/OpenChamber setup is documented in `docs/operations/development.md`
-and the underlying foundation in `docs/operations/codex.md`. Use their shared
-dedicated account and independent development clones. The operator's existing
+OpenChamber and OpenCode are the supported native runtimes. Codex is retired
+platform-wide. When migrating existing installations, preserve the development
+identity, project clones, terminal work, and private user configuration.
+Use the dedicated account and independent development clones. The operator's existing
 `~/projects` may contain live deployment checkouts: do not grant recursive write
 access, change their ownership, or share their Git metadata with a coding worktree.
 Ordinary edits, builds, tests and development networking within the dedicated

@@ -138,6 +138,12 @@ class Fixture(unittest.TestCase):
 
 
 class PolicyAndBoundaryTests(Fixture):
+    def test_delegated_apply_requires_exact_argv_before_opening_policy(self):
+        with patch.object(core, 'load_policy', side_effect=AssertionError('policy opened')):
+            for args in ([], ['--', A], [A, 'extra'], ['--help'], [A + '\n'], ['pause']):
+                with self.subTest(args=args), self.assertRaisesRegex(core.Blocked, 'invalid-revision'):
+                    core.main(['apply', *args])
+
     def test_missing_opt_in_is_noop_without_lock_state_or_sources(self):
         before = sorted(self.root.rglob('*'))
         with redirect_stdout(io.StringIO()) as output:
@@ -245,6 +251,13 @@ class PolicyAndBoundaryTests(Fixture):
         self.assertNotEqual(core.fingerprint(source, self.p), first)
         self.assertNotEqual(core.fingerprint(source, dict(self.p, port=4949)), core.fingerprint(source, self.p))
 
+    def test_worker_only_change_does_not_request_application_restart(self):
+        source = self.source_tree()
+        before = core.fingerprint(source, self.p)
+        worker = source / 'infrastructure/dev-agent/deployment_probe.py'
+        worker.write_text(worker.read_text() + '\n# reviewed worker update\n')
+        self.assertEqual(core.fingerprint(source, self.p), before)
+
 
 class LifecycleTests(Fixture):
     def setUp(self):
@@ -293,6 +306,33 @@ class LifecycleTests(Fixture):
         self.assertEqual(state['reason'], 'quiet-observation-required')
         self.assertNotIn(('publish',), self.host.calls)
 
+    def test_changed_helper_yields_to_next_invocation_before_touching_application(self):
+        with patch.object(core, 'refresh_updater', return_value=True) as refresh:
+            _, state = self.apply()
+        refresh.assert_called_once_with(self.tree)
+        self.assertEqual(state['reason'], 'helper-refreshed')
+        self.assertIsNone(state['transaction'])
+        self.assertIsNone(state['applied_revision'])
+        self.assertFalse(self.host.calls)
+
+    def test_active_journal_does_not_switch_helper(self):
+        self.quiet()
+        self.host.fail = 'publish'
+        with self.assertRaises(core.Blocked):
+            self.apply()
+        self.host.fail = None
+        with patch.object(core, 'refresh_updater', side_effect=AssertionError('journal switched helper')):
+            _, state = self.apply()
+        self.assertEqual(state['status'], 'applied')
+
+    def test_status_names_failed_stage_but_never_copies_unexpected_error_text(self):
+        for exc, reason in ((core.Blocked('gateway-inspection-failed'), 'gateway-inspection-failed'),
+                            (ValueError('private child output'), 'fix-forward-or-local-review-required')):
+            with self.subTest(reason=reason), patch.object(self.host, 'snapshot', side_effect=exc):
+                with self.assertRaises(type(exc)):
+                    self.apply()
+                self.assertEqual(core.load_state()['reason'], reason)
+
     def test_post_ingress_activity_race_restores_only_original_ingress(self):
         self.quiet()
         self.host.observations = [dict(state='idle', reason='idle'), dict(state='busy', reason='message_queue')]
@@ -332,6 +372,25 @@ class LifecycleTests(Fixture):
         self.assertEqual(state['applied_revision'], A)
         self.assertEqual(state['reason'], 'inputs-unchanged-no-repair-attempted')
         self.assertFalse(any(c[0] in ('publish', 'close', 'preflight') for c in self.host.calls))
+
+    def test_legacy_digest_migrates_from_applied_source_on_helper_only_update(self):
+        candidate = self.tree.parent / B
+        shutil.copytree(self.tree, candidate)
+        worker = candidate / 'infrastructure/dev-agent/deployment_host.py'
+        worker.write_text(worker.read_text() + '\n# changed worker\n')
+        legacy = core.fingerprint(self.tree, self.p, legacy=True)
+        self.source.tip = B
+        for app_changed in (False, True):
+            if app_changed:
+                (candidate / 'infrastructure/dev-agent/qacey-dev').write_text('changed launcher')
+            state = core.empty_state()
+            state.update(applied_revision=A, applied_digest=legacy)
+            core.save(self.root / core.STATE / 'state.json', state)
+            with patch.object(self.source, 'checkout', side_effect=lambda rev, **kw: {A: self.tree, B: candidate}[rev]):
+                _, state = self.apply(B)
+            self.assertEqual(state['applied_revision'], A)
+            self.assertEqual(state['applied_digest'], core.fingerprint(self.tree, self.p))
+            self.assertEqual(state['status'], 'pending' if app_changed else 'unchanged')
 
     def test_failed_publication_keeps_original_journal_and_recovers_same_verified_source(self):
         self.quiet()
@@ -431,7 +490,10 @@ class HostBoundaryTests(Fixture):
             self.assertEqual(child.call_args.kwargs['identity'], self.p)
             child.reset_mock()
             self.host.install_runtime_and_sync()
-            self.assertEqual(child.call_count, 3)
+            self.assertEqual([call.args[0] for call in child.call_args_list], [
+                ['/usr/local/bin/qacey-dev', 'install-runtime', '--apply'],
+                ['/usr/local/bin/qacey-dev', 'sync', '--apply'],
+            ])
             self.assertTrue(all(c.kwargs['identity'] == self.p for c in child.call_args_list))
 
     def test_managed_codex_process_is_busy_even_without_tmux(self):
@@ -476,9 +538,8 @@ class HostBoundaryTests(Fixture):
     def test_application_startup_waits_for_delayed_readiness_and_has_deadline(self):
         now = [0.0]
         def sleep(seconds): now[0] += seconds
-        child = subprocess.CompletedProcess([], 0, 'codex-cli 0.172.0\n', '')
         with patch.object(self.host, 'check_records'), patch.object(self.host, 'credentials'), \
-             patch.object(core, 'run', return_value=child), patch.object(core, 'json_load', return_value={'version': '0.172.0'}), \
+             patch.object(core, 'run'), \
              patch.object(deployment_host.time, 'monotonic', side_effect=lambda: now[0]), \
              patch.object(deployment_host.time, 'sleep', side_effect=sleep), \
              patch.object(self.host, 'probe', side_effect=[dict(state='unknown', reason='health_mismatch'),
@@ -488,7 +549,7 @@ class HostBoundaryTests(Fixture):
             self.assertEqual(now[0], 1.0)
         now[0] = 0.0
         with patch.object(self.host, 'check_records'), patch.object(self.host, 'credentials'), \
-             patch.object(core, 'run', return_value=child), patch.object(core, 'json_load', return_value={'version': '0.172.0'}), \
+             patch.object(core, 'run'), \
              patch.object(deployment_host.time, 'monotonic', side_effect=lambda: now[0]), \
              patch.object(deployment_host.time, 'sleep', side_effect=sleep), \
              patch.object(self.host, 'probe', return_value=dict(state='unknown', reason='health_mismatch')):
@@ -645,6 +706,47 @@ class BootstrapTests(Fixture):
         self.assertEqual(sorted(self.root.rglob('*')), before)
         with self.assertRaises(SystemExit), redirect_stdout(io.StringIO()): self.bootstrap.main([])
 
+    def test_repair_existing_enrollment_keeps_policy_state_and_drift_baseline(self):
+        self.enrolled()
+        source = FakeSource(self.source_tree())
+        shutil.copyfile(ASSETS / 'updater-compat.json', source.tree / 'infrastructure/dev-agent/updater-compat.json')
+        (self.root / core.LIBRARY).mkdir()
+        state_path = self.root / core.STATE / 'state.json'
+        policy_path = self.root / core.POLICY
+        state = core.load_state()
+        state.update(managed_files={'existing': 'recorded'}, paused=True)
+        core.save(state_path, state)
+        before = state_path.read_bytes()
+        lock = core.deployment_lock
+        def after_operator_rotation():
+            core.save(policy_path, dict(self.p, operator='new-operator'))
+            return lock()
+        with patch.object(core, 'deployment_lock', side_effect=after_operator_rotation), \
+             patch.object(core, 'Source', return_value=source), patch.object(self.bootstrap, 'validate_rule'):
+            self.bootstrap.repair(A)
+        self.assertEqual(before, state_path.read_bytes())
+        self.assertEqual(core.load_policy(), dict(self.p, operator='new-operator'))
+        self.assertEqual(source.calls, [('fetch', A), ('descendant', None, A), ('checkout', A, False)])
+        self.assertIn('\nnew-operator ALL=', (self.root / 'etc/sudoers.d/qacey-dev-deploy').read_text())
+        self.assertTrue((self.root / 'usr/local/sbin/qacey-dev-deploy').is_file())
+        state['transaction'] = dict(revision=A, digest='b' * 64, phase='starting',
+                                    original=lifecycle(), credentials={})
+        core.save(state_path, state)
+        with patch.object(core, 'Source', side_effect=AssertionError('opened source with journal')):
+            with self.assertRaisesRegex(core.Blocked, 'transaction'):
+                self.bootstrap.repair(A)
+
+    def test_generated_policy_parses_with_installed_sudo_implementations(self):
+        parsers = {path.resolve() for path in map(Path, (
+            '/usr/sbin/visudo', '/usr/sbin/visudo.ws', '/usr/lib/cargo/bin/visudo')) if path.is_file()}
+        if not parsers:
+            self.skipTest('visudo not installed')
+        for parser in sorted(parsers):
+            with self.subTest(parser=parser):
+                result = subprocess.run([str(parser), '-c', '-f', '-'], text=True,
+                                        input=self.bootstrap.sudoers(self.p), capture_output=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_apply_installs_strict_sudo_rule_private_policy_and_retains_pause_on_reenrol(self):
         with patch.object(core, 'run', return_value=subprocess.CompletedProcess([], 0, '', '')) as child:
             self.bootstrap.apply(self.p, FakeHost(), None)
@@ -652,7 +754,8 @@ class BootstrapTests(Fixture):
         self.assertEqual(stat.S_IMODE((self.root / core.POLICY).stat().st_mode), 0o600)
         rule = (self.root / 'etc/sudoers.d/qacey-dev-deploy').read_text()
         self.assertIn('operator ALL=(root) NOPASSWD: NOSETENV:', rule)
-        self.assertIn('^apply [0-9a-f]{40}$', rule)
+        self.assertEqual(rule.splitlines()[-1], 'operator ALL=(root) NOPASSWD: NOSETENV: '
+                         '/usr/local/sbin/qacey-dev-deploy apply *')
         self.assertNotIn('pause', rule)
         self.assertNotIn('dev-agent ALL', rule)
         state = core.load_state()
@@ -707,6 +810,21 @@ class BootstrapTests(Fixture):
         self.assertNotEqual(launcher.read_bytes(), before)
         target = launcher.read_text().splitlines()[1].split()[4]
         self.assertTrue((self.root / target.lstrip('/')).is_file())
+
+    def test_incompatible_worker_cannot_replace_launcher(self):
+        (self.root / core.LIBRARY).mkdir()
+        source = self.source_tree()
+        assets = source / 'infrastructure/dev-agent'
+        compat = assets / 'updater-compat.json'
+        shutil.copyfile(ASSETS / compat.name, compat)
+        self.assertTrue(core.refresh_updater(source))
+        launcher = self.root / 'usr/local/sbin/qacey-dev-deploy'
+        before = launcher.stat()
+        self.assertFalse(core.refresh_updater(source))
+        compat.write_text('{"launcher":1,"policy":1,"state":2}')
+        with self.assertRaisesRegex(core.Blocked, 'incompatible-helper'):
+            core.refresh_updater(source)
+        self.assertTrue(os.path.samestat(before, launcher.stat()))
 
 
 if __name__ == '__main__':
