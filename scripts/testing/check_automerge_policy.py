@@ -13,6 +13,15 @@ import argparse
 import sys
 
 
+NATIVE_RUNTIME_FILES = frozenset(
+    {
+        "infrastructure/dev-agent/release.json",
+        "infrastructure/dev-agent/runtime/openchamber/package.json",
+        "infrastructure/dev-agent/runtime/openchamber/package-lock.json",
+    }
+)
+
+
 def is_renovate_bot(author: str) -> bool:
     name = (author or "").lower()
     return name.endswith("[bot]") and "renovate" in name
@@ -23,10 +32,19 @@ def evaluate(author: str, labels, changed_files):
     if not is_renovate_bot(author):
         return None
 
+    label_set = {label.strip().lower() for label in labels if label.strip()}
     files = {path.strip() for path in changed_files if path.strip()}
-    if files != {"versions.env"}:
-        return "Renovate PR changes files other than versions.env"
-    return None
+    if files == {"versions.env"}:
+        return None
+    if (
+        files
+        and files <= NATIVE_RUNTIME_FILES
+        and "infrastructure/dev-agent/release.json" in files
+    ):
+        if "major" in label_set:
+            return "Renovate major native runtime update requires manual review"
+        return None
+    return "Renovate PR changes files other than versions.env or native runtime pins"
 
 
 def split_values(raw: str):
