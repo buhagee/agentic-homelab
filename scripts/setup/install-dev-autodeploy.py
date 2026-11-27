@@ -83,7 +83,39 @@ def sudoers(policy):
     return ('# Native opt-in updater: only a strict requested main commit is delegated.\n'
             'Defaults!/usr/local/sbin/qacey-dev-deploy env_reset, !setenv, '
             'secure_path="/usr/sbin:/usr/bin:/sbin:/bin"\n' + policy['operator'] +
-            ' ALL=(root) NOPASSWD: NOSETENV: /usr/local/sbin/qacey-dev-deploy ^apply [0-9a-f]{40}$\n')
+            ' ALL=(root) NOPASSWD: NOSETENV: /usr/local/sbin/qacey-dev-deploy apply *\n')
+
+
+def validate_rule(rule):
+    active = Path('/usr/sbin/visudo')
+    for parser in (Path('/usr/sbin/visudo.ws'), Path('/usr/lib/cargo/bin/visudo')):
+        if parser.is_file() and parser.resolve() != active.resolve():
+            core.run([str(parser), '-c', '-f', '-'], 'sudoers-validation', input=rule)
+    core.run([str(active), '-c', '-f', '-'], 'sudoers-validation', input=rule)
+
+
+def repair(revision):
+    """Repair only the launcher and delegation, without re-enrolling the host."""
+    if not core.SHA.fullmatch(revision):
+        raise core.Blocked('invalid-revision')
+    policy = core.load_policy()
+    if policy is None:
+        raise core.Blocked('repair-requires-enrollment')
+    with core.deployment_lock():
+        state = core.load_state()
+        if state['transaction'] is not None:
+            raise core.Blocked('finish-recorded-native-transaction-before-helper-repair')
+        destination = core.HOST_ROOT / 'etc/sudoers.d/qacey-dev-deploy'
+        core.parents(destination)
+        core.trusted(destination, optional=True)
+        rule = sudoers(policy)
+        validate_rule(rule)
+        source = core.Source(policy)
+        source.fetch(revision)
+        source.descendant(state['applied_revision'], revision)
+        core.refresh_updater(source.checkout(revision))
+        # Publish delegation last; malformed argv must hit the strict worker.
+        core.atomic(destination, rule.encode(), 0o440)
 
 
 def preflight_destinations():
@@ -115,7 +147,7 @@ def apply(policy, host, previous):
     library = core.HOST_ROOT / core.LIBRARY
     # The sudoers file is parsed before any privilege delegation is published.
     rule = sudoers(policy)
-    core.run(['/usr/sbin/visudo', '-c', '-f', '-'], 'sudoers-validation', input=rule)
+    validate_rule(rule)
     intent_path = directory / 'enrollment.json'
     if previous is None:
         if directory.exists():
@@ -152,6 +184,15 @@ def apply(policy, host, previous):
 
 
 def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    if argv[:1] == ['--repair-helper']:
+        if len(argv) != 3 or argv[2] != '--apply':
+            raise core.Blocked('usage: --repair-helper CURRENT_MAIN_SHA --apply')
+        if os.geteuid() != core.ROOT_UID:
+            raise core.Blocked('root-required-for-helper-repair')
+        repair(argv[1])
+        print('Repaired enrolled helper and sudo rule; native application state was preserved.')
+        return 0
     parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument('--operator', required=True, help='Existing platform deployment operator, distinct from the development user.')
     parser.add_argument('--verified-oracle-route', required=True, metavar='SHA256',

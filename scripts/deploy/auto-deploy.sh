@@ -215,7 +215,7 @@ if [[ "$ALREADY_DEPLOYED" -eq 1 ]]; then
   bash scripts/maintenance/platform-healthcheck.sh || die "healthcheck failed for already-deployed SHA $SHA"
   retire_containers || die "container retirement failed for already-deployed SHA $SHA"
   printf '%s\n' "$SHA" > "$LAST_GOOD_FILE"
-  if ! refresh_native_development; then exit 1; fi
+  refresh_native_development || :
   exit 0
 fi
 
@@ -239,7 +239,7 @@ if deploy_stack; then
   echo "=== Qacey deploy succeeded: $SHA ==="
   # Native state has its own transaction. A failed or deferred native update
   # must never enter the platform rollback path below.
-  if ! refresh_native_development; then exit 1; fi
+  refresh_native_development || :
   exit 0
 fi
 
