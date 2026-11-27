@@ -97,6 +97,11 @@ source revision, Node path, port and versions. Four units are installed disabled
 | `qacey-dev-proxy.socket` | Mode `0600` Unix socket owned by the recorded development account. |
 | `qacey-dev-proxy.service` | Socket-activated forwarding to loopback OpenChamber. It does not start a deliberately stopped app. |
 
+Systemd treats OpenChamber's numeric exit code `143` as a clean shutdown.
+An unsolicited exit with the same numeric code is indistinguishable and also
+does not trigger a restart. Other failures, including SIGKILL and OOM kills,
+remain subject to the service's bounded `Restart=on-failure` policy.
+
 The pinned OpenCode policy preserves unrelated OpenChamber policy keys. Native
 launch rejects shared OpenCode service mode and leaves backend-port/adoption
 variables unset. Passive relay startup is disabled; this is not a network ban on

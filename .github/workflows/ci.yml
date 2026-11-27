@@ -144,3 +144,66 @@ jobs:
           node-version: "24"
       - name: Verify native packaging, shared skills, MCP schemas and PTY
         run: python3 scripts/testing/check-dev-runtime.py
+      - name: Verify OpenChamber stop and bounded failure restarts in systemd
+        if: runner.environment == 'github-hosted'
+        shell: bash
+        run: |
+          set -euo pipefail
+          fixture="$(mktemp -d "$RUNNER_TEMP/qacey-stop.XXXXXXXX")"
+          cat > "$fixture/service.sh" <<'EOF'
+          #!/bin/bash
+          set -eu
+          mode="$1"
+          state="$2"
+          if [[ "$mode" == record ]]; then
+            printf '%s %s %s\n' "$SERVICE_RESULT" "$EXIT_CODE" "$EXIT_STATUS" > "$state.result"
+            exit 0
+          fi
+          trap 'exit 143' TERM
+          echo started >> "$state.starts"
+          systemd-notify --ready
+          case "$mode" in
+            stop) while :; do sleep infinity & wait "$!"; done ;;
+            error) exit 1 ;;
+            kill) kill -KILL "$$" ;;
+          esac
+          EOF
+          # Apply the managed unit's policy to synthetic processes only. Shorten
+          # the backoff here; the provisioner test checks the production delay.
+          mapfile -t policy < <(sed -nE '/^(SuccessExitStatus|Restart|StartLimitIntervalSec|StartLimitBurst)=/s/^/--property=/p' \
+            infrastructure/dev-agent/qacey-openchamber.service.in)
+          units=()
+          trap 'if ((${#units[@]})); then sudo -n systemctl stop "${units[@]}" || true; fi' EXIT
+          for mode in stop error kill; do
+            unit="qacey-ci-${fixture##*.}-$mode.service"
+            units+=("$unit")
+            state="$fixture/$mode"
+            sudo -n systemd-run --unit="$unit" --uid="$(id -u)" --gid="$(id -g)" \
+              --property=Type=notify --property=NotifyAccess=all \
+              --property=RestartSec=100ms --property=TimeoutStartSec=10s --property=TimeoutStopSec=5s \
+              --property="ExecStopPost=/bin/bash \"$fixture/service.sh\" record \"$state\"" \
+              "${policy[@]}" /bin/bash "$fixture/service.sh" "$mode" "$state"
+            if [[ "$mode" == stop ]]; then
+              sudo -n systemctl stop "$unit"
+              sleep .3 # Longer than the fixture's restart delay.
+              result="$(cat "$state.result")"
+              if [[ "$result" != 'success exited 143' ]] || systemctl is-active --quiet "$unit" ||
+                 [[ "$(wc -l < "$state.starts")" != 1 ]]; then
+                echo "Expected one start and a clean stop (numeric 143); got: $result"
+                exit 1
+              fi
+              echo "Clean systemd stop after one start ($result): PASS"
+            else
+              for ((attempt = 0; attempt < 50; attempt++)); do
+                result="$(systemctl show "$unit" -p Result --value)"
+                [[ "$result" != start-limit-hit ]] || break
+                sleep .2
+              done
+              starts="$(wc -l < "$state.starts")"
+              if [[ "$result" != start-limit-hit || "$starts" != 3 ]]; then
+                echo "Expected $mode to hit the rate limit after three starts; got: $result ($starts starts)"
+                exit 1
+              fi
+              echo "Systemd $mode hit the rate limit after $starts starts: PASS"
+            fi
+          done

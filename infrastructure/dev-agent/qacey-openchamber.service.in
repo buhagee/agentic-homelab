@@ -13,6 +13,8 @@ WorkingDirectory=~
 EnvironmentFile=/etc/qacey-dev/openchamber.env
 ExecStart=/usr/local/bin/qacey-dev openchamber
 UMask=0077
+# The foreground CLI exits numerically with 128 + SIGTERM on graceful shutdown.
+SuccessExitStatus=143
 Restart=on-failure
 RestartSec=15s
 MemoryAccounting=true
