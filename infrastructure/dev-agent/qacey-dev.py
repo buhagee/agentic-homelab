@@ -73,7 +73,7 @@ def main(argv=None):
     env.update(OPENCHAMBER_DATA_DIR=str(account.home / '.config/openchamber'),
                OPENCHAMBER_OPENCODE_HOSTNAME='127.0.0.1',
                OPENCHAMBER_OPENCODE_CWD=str(account.home / 'projects'),
-               OPENCODE_BINARY=str(runtime['opencode']), OPENCHAMBER_RELAY_HOST='off',
+               OPENCODE_BINARY=str(runtime['opencode']), OPENCHAMBER_RELAY_HOST='on',
                OPENCODE_DISABLE_AUTOUPDATE='1',
                OPENCHAMBER_UI_SESSION_TTL_HOURS='2',
                PATH=f"{runtime['node'].parent}:{env['PATH']}")
