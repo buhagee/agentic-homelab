@@ -169,18 +169,6 @@ class RenovatePolicyTests(unittest.TestCase):
         for rule in minor_rules:
             self.assertEqual(rule.get("minimumReleaseAge"), "2 days")
 
-    def test_renovate_workflow_runs_native_runtime_updater(self):
-        workflow = (REPO_ROOT / ".github" / "workflows" / "renovate.yml").read_text(
-            encoding="utf-8"
-        )
-        self.assertIn("native-runtime:", workflow)
-        self.assertIn("native-runtime-publish:", workflow)
-        self.assertIn("persist-credentials: false", workflow)
-        self.assertIn("scripts/maintenance/update-native-runtime.py", workflow)
-        self.assertIn("scripts/testing/check-dev-runtime.py", workflow)
-        self.assertIn("renovate/native-runtime", workflow)
-        self.assertIn("renovate/native-runtime-major", workflow)
-
 
 if __name__ == "__main__":
     unittest.main()

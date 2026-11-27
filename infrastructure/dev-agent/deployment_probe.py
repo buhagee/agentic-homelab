@@ -11,28 +11,14 @@ import base64
 import http.cookiejar
 import json
 import math
-from pathlib import Path, PurePosixPath
+from pathlib import PurePosixPath
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 
 
-def _supported_activity_versions():
-    versions = {('2.8.0', '2.4.1')}
-    release_path = Path(__file__).with_name('release.json')
-    try:
-        release = json.loads(release_path.read_text(encoding='utf-8'))
-        oc = release.get('openchamber', {}).get('version')
-        op = release.get('opencode', {}).get('version')
-        if isinstance(oc, str) and isinstance(op, str):
-            versions.add((oc, op))
-    except Exception:
-        pass
-    return versions
-
-
-ACTIVITY_VERSIONS = _supported_activity_versions()
+ACTIVITY_VERSIONS = {('2.8.0', '2.4.1'), ('2.8.1', '2.4.2')}
 MAX_RESPONSE = 2 * 1024 * 1024
 MAX_REQUESTS = 256
 MAX_LOCATIONS = 32

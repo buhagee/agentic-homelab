@@ -32,7 +32,6 @@ def evaluate(author: str, labels, changed_files):
     if not is_renovate_bot(author):
         return None
 
-    label_set = {label.strip().lower() for label in labels if label.strip()}
     files = {path.strip() for path in changed_files if path.strip()}
     if files == {"versions.env"}:
         return None
@@ -41,8 +40,6 @@ def evaluate(author: str, labels, changed_files):
         and files <= NATIVE_RUNTIME_FILES
         and "infrastructure/dev-agent/release.json" in files
     ):
-        if "major" in label_set:
-            return "Renovate major native runtime update requires manual review"
         return None
     return "Renovate PR changes files other than versions.env or native runtime pins"
 

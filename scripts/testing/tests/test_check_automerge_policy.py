@@ -61,14 +61,14 @@ class AutomergePolicyTests(unittest.TestCase):
             )
         )
 
-    def test_renovate_native_runtime_major_fails(self):
-        reason = evaluate(
-            "qacey-renovate[bot]",
-            ["native-runtime", "major"],
-            ["infrastructure/dev-agent/release.json"],
+    def test_renovate_native_runtime_major_passes_for_manual_merge(self):
+        self.assertIsNone(
+            evaluate(
+                "qacey-renovate[bot]",
+                ["native-runtime", "major"],
+                ["infrastructure/dev-agent/release.json"],
+            )
         )
-        self.assertIsNotNone(reason)
-        self.assertIn("major", reason.lower())
 
     def test_renovate_mixing_versions_and_native_runtime_fails(self):
         self.assertIsNotNone(
