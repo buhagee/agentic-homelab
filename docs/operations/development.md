@@ -62,9 +62,9 @@ clones, never from the operator's production Git metadata.
   Setting `mfa_required: true` is an operator attestation; this repository cannot
   inspect the provider's MFA policy. SSO by itself does not prove MFA.
 
-Reviewed runtime pins are Codex `0.172.0`, OpenCode `2.4.1`, OpenChamber `2.8.0`,
+Reviewed runtime pins are Codex `0.172.0`, OpenCode `2.4.2`, OpenChamber `2.8.1`,
 OAuth2 Proxy `v7.15.6` and Caddy `2.11.9-alpine`. Native download hashes and npm
-lock inputs live in `infrastructure/dev-agent`. Review native OpenCode release assets and hashes there independently of Renovate’s container-only `OPENCODE_V2_VERSION` updates. Gateway image pins come from `versions.env`. Required upstream native install scripts are allowed. The known
+lock inputs live in `infrastructure/dev-agent` and are updated automatically by the daily `native-runtime` job in `.github/workflows/renovate.yml` (auto-merging patch and minor updates after `opencode-smoke` passes). Gateway image pins come from `versions.env`. Required upstream native install scripts are allowed. The known
 npm `allowScripts` review warning is distinct from a failed native build:
 version checks and an actual PTY spawn/input/resize/exit must still pass.
 
@@ -655,7 +655,7 @@ the standard native installation or automatic updates.
 - [Codex skills](https://learn.chatgpt.com/docs/build-skills.md)
 - [OpenCode skill discovery](https://opencode.ai/docs/skills/)
 - [OpenCode MCP configuration](https://opencode.ai/docs/mcp-servers/)
-- [OpenChamber 2.8.0](https://github.com/openchamber/openchamber/releases/tag/v2.8.0)
+- [OpenChamber 2.8.1](https://github.com/openchamber/openchamber/releases/tag/v2.8.1)
 - [OAuth2 Proxy configuration](https://oauth2-proxy.github.io/oauth2-proxy/configuration/overview/)
 - [Caddy reverse proxy and Unix upstreams](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy)
 - [Compose raw env files](https://docs.docker.com/reference/compose-file/container-spec/)
