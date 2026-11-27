@@ -304,36 +304,42 @@ Activation is an explicit operator step after reviewing the PR and configuration
 
 ```sh
 sudo systemctl daemon-reload
-sudo systemctl start qacey-codex-tmux.service qacey-openchamber.service qacey-dev-proxy.socket
+sudo systemctl start qacey-openchamber.service qacey-dev-proxy.socket
 sudo qacey-dev-web start --verified-oracle-route VERIFIED-ORACLE-SHA256
 sudo qacey-dev-web status
 sudo -iu dev-agent qacey-dev status
 ```
 
-`start` checks the native services and exact socket owner/mode, then recreates
-only this gateway's containers so replaced bind-mounted config files actually
-load. **An explicit gateway start/update disconnects existing browser sessions
-and terminal WebSockets.** Native tmux sessions remain running. Initial `start`
-does not enable native boot startup; after acceptance, opt in deliberately:
+`start` requires both the OpenChamber service and the private proxy socket unit
+to be active. It verifies the socket owner and mode, then recreates the gateway's
+containers so they load any replaced bind-mounted config files. **An explicit
+gateway start/update disconnects existing browser sessions and terminal
+WebSockets.** Running tmux sessions remain available to reattach. Initial
+`start` does not enable native boot startup; after acceptance, opt in deliberately:
 
 ```sh
-sudo systemctl enable qacey-codex-tmux.service qacey-openchamber.service qacey-dev-proxy.socket
+sudo systemctl enable qacey-openchamber.service qacey-dev-proxy.socket
 ```
 
-For native Codex remote control, also enable `qacey-codex.service` if it is part
-of your setup. Its login check requires a signed-in Codex account. Gateway
-containers use `unless-stopped`, respecting an explicit stop. Systemd starts new
-native processes after a reboot. Existing tmux sessions end with the old boot,
-and saved Codex conversations can be resumed in a new session.
+The optional managed tmux server (`qacey-codex-tmux.service`) runs independently
+of OpenChamber and the gateway. Start it if you want persistent terminal sessions
+across browser disconnects, and enable it separately if you want the server
+started at boot. Existing tmux sessions end at reboot.
+
+```sh
+sudo systemctl start qacey-codex-tmux.service
+sudo systemctl enable qacey-codex-tmux.service  # Optional boot startup
+```
+
+Gateway containers use `unless-stopped`, respecting an explicit stop.
 
 After a planned reboot, verify startup and then test the HTTPS sign-in flow:
 
 ```sh
-for unit in qacey-openchamber.service qacey-dev-proxy.socket qacey-codex-tmux.service; do
+for unit in qacey-openchamber.service qacey-dev-proxy.socket; do
   systemctl is-enabled "$unit"
   systemctl is-active "$unit"
 done
-systemctl is-active qacey-codex.service  # If native Codex remote control is enabled
 sudo qacey-dev-web status
 sudo -u dev-agent curl --fail --silent --show-error --max-time 5 --output /dev/null \
   --unix-socket /run/qacey-dev-proxy/backend.sock http://localhost/health
@@ -341,16 +347,16 @@ sudo -u dev-agent curl --fail --silent --show-error --max-time 5 --output /dev/n
 
 Open the HTTPS hostname on your phone, complete IdP MFA, then authenticate to
 OpenChamber with its UI password. Enrol a passkey if desired. OpenCode chat is
-available in the main UI. In the web terminal:
+available in the main UI. The web terminal works with tmux stopped. To use the
+optional managed server from the web terminal, attach to or create a named session:
 
 ```sh
-qacey-dev codex "$HOME/projects/agentic-homelab"
+tmux -N -S /run/qacey-codex-tmux/server.sock new-session -A -s agentic-homelab \
+  -c "$HOME/projects/agentic-homelab"
 ```
 
-This attaches to a deterministic per-project tmux session, creating it if needed
-on the separately running server. Another attachment to that project shares the
-same session. The client cannot auto-start an unmanaged tmux server; start the
-service if it is unavailable. Choose independent worktrees for concurrent tasks.
+Another attachment with the same name shares the session. Choose independent
+sessions and worktrees for concurrent tasks.
 
 ## Switching harnesses and evolving tooling
 

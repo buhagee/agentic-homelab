@@ -13,6 +13,7 @@ import sys
 import tempfile
 import unittest
 from contextlib import redirect_stdout
+from types import SimpleNamespace
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -291,7 +292,7 @@ class WebProvisionTests(unittest.TestCase):
         provision.apply()
         self.assertTrue(json.loads((self.directory / 'installation.json').read_text())['ready'])
 
-    def lifecycle(self):
+    def lifecycle(self, *, active_units=()):
         self.setup.main([*self.args, '--apply'])
         entry = load('test_qacey_dev_web', ASSETS / 'qacey-dev-web.py')
         self.enterContext(patch.object(entry, 'HOST_ROOT', self.host))
@@ -299,6 +300,11 @@ class WebProvisionTests(unittest.TestCase):
         commands = []
         def run(command):
             commands.append(command)
+            if command[:3] == ['/usr/bin/systemctl', 'is-active', '--quiet']:
+                units = command[3:]
+                # A grouped systemctl check succeeds if any requested unit is active.
+                if not any(unit in active_units for unit in units):
+                    raise RuntimeError(f'Inactive native units: {", ".join(units)}')
             return '2.30.0' if 'version' in command else ''
         self.enterContext(patch.object(entry, 'run', side_effect=run))
         return entry, commands
@@ -329,22 +335,58 @@ class WebProvisionTests(unittest.TestCase):
         self.assertFalse(any('up' in command for command in commands))
         self.assertNotIn('not-a-live-secret', self.output.getvalue())
 
-    def test_start_checks_each_native_service_individually(self):
-        entry, commands = self.lifecycle(); self.credentials()
-        directory = self.host / 'run/qacey-dev-proxy'; directory.mkdir(parents=True)
-        socket_path = directory / 'backend.sock'
-        from types import SimpleNamespace
+    def private_backend_socket(self):
+        socket_path = self.host / 'run/qacey-dev-proxy/backend.sock'
+        socket_path.parent.mkdir(parents=True)
         socket_info = SimpleNamespace(st_mode=stat.S_IFSOCK | 0o600, st_uid=1200, st_gid=1200)
-        original = Path.lstat
+        real_lstat = Path.lstat
+
         def lstat(path):
-            return socket_info if path == socket_path else original(path)
-        def run(command):
-            commands.append(command)
-            if command[-1] == 'qacey-codex-tmux.service' and len(command) == 4:
-                raise RuntimeError('tmux is inactive')
-            return '2.30.0' if 'version' in command else ''
-        with patch.object(Path, 'lstat', lstat), patch.object(entry, 'run', side_effect=run):
-            with self.assertRaises(RuntimeError): entry.main(['start', '--verified-oracle-route', self.verified_route()])
+            return socket_info if path == socket_path else real_lstat(path)
+
+        self.enterContext(patch.object(Path, 'lstat', lstat))
+
+    def test_updater_restores_gateway_with_managed_tmux_stopped(self):
+        active_units = {'qacey-openchamber.service'}
+        entry, commands = self.lifecycle(active_units=active_units)
+        self.credentials()
+        self.private_backend_socket()
+        import deployment as core
+        from deployment_host import Host
+
+        def run(command, stage, **kwargs):
+            if command == ['/usr/bin/systemctl', 'start', 'qacey-dev-proxy.socket']:
+                active_units.add('qacey-dev-proxy.socket')
+            elif command[0] == '/usr/local/bin/qacey-dev-web':
+                entry.main(command[1:])
+            else:
+                self.fail(f'Unexpected updater command at {stage}: {command}')
+
+        original = {'units': {'qacey-dev-proxy.socket': {'active': True},
+                              'qacey-dev-proxy.service': {'active': False},
+                              'qacey-codex-tmux.service': {'active': False}},
+                    'gateway_active': True}
+        with (patch.object(core, 'HOST_ROOT', self.host),
+              patch.object(core, 'ROOT_UID', os.geteuid()),
+              patch.object(core, 'run', side_effect=run)):
+            host = Host(dict(self.identity, verified_oracle_route=self.verified_route()))
+            host.restore_ingress(original)
+        self.assertEqual(commands[-1][-3:], ['up', '-d', '--force-recreate'])
+
+    def test_start_rejects_inactive_app_even_when_socket_is_active(self):
+        entry, commands = self.lifecycle(active_units={'qacey-dev-proxy.socket', 'qacey-codex-tmux.service'})
+        self.credentials()
+        self.private_backend_socket()
+        with self.assertRaisesRegex(RuntimeError, r'Inactive native units: qacey-openchamber\.service$'):
+            entry.main(['start', '--verified-oracle-route', self.verified_route()])
+        self.assertFalse(any('up' in command for command in commands))
+
+    def test_start_rejects_inactive_socket_even_when_app_is_active(self):
+        entry, commands = self.lifecycle(active_units={'qacey-openchamber.service', 'qacey-codex-tmux.service'})
+        self.credentials()
+        self.private_backend_socket()
+        with self.assertRaisesRegex(RuntimeError, r'Inactive native units: qacey-dev-proxy\.socket$'):
+            entry.main(['start', '--verified-oracle-route', self.verified_route()])
         self.assertFalse(any('up' in command for command in commands))
 
     def test_start_requires_attestation_for_current_hostname_and_fragment_before_docker(self):

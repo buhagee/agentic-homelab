@@ -50,7 +50,7 @@ def check(*, require_socket=False, verified_oracle_route=None):
                 or stat.S_IMODE(info.st_mode) != 0o600):
             raise ValueError('Start the private native proxy socket and verify its account and mode 0600 first.')
         # is-active with several units succeeds when any unit is active. Require each.
-        for unit in ('qacey-openchamber.service', 'qacey-dev-proxy.socket', 'qacey-codex-tmux.service'):
+        for unit in ('qacey-openchamber.service', 'qacey-dev-proxy.socket'):
             run(['/usr/bin/systemctl', 'is-active', '--quiet', unit])
     return command
 
