@@ -56,6 +56,8 @@ class RenovatePolicyTests(unittest.TestCase):
             matched.update(rule.get("matchPackageNames", []))
             self.assertIn(rule.get("matchUpdateTypes"), (["patch"], ["minor"]))
             self.assertTrue(rule.get("automerge", False))
+            if rule.get("matchUpdateTypes") == ["minor"]:
+                self.assertEqual(rule.get("minimumReleaseAge"), "2 days")
         self.assertEqual(matched, STATELESS)
 
     def test_pr_creation_is_not_throttled(self):
@@ -145,15 +147,27 @@ class RenovatePolicyTests(unittest.TestCase):
             rule for rule in self.config["packageRules"]
             if "@openchamber/web" in rule.get("matchPackageNames", [])
         ]
-        self.assertEqual(len(rules), 2)
-        default_rule, major_rule = rules
+        self.assertEqual(len(rules), 3)
+        default_rule, minor_rule, major_rule = rules
         self.assertTrue(default_rule["automerge"])
         self.assertIn(
             "python3 scripts/maintenance/refresh-openchamber-release.py {{{newVersion}}}",
             default_rule["postUpgradeTasks"]["commands"],
         )
+        self.assertEqual(minor_rule["matchUpdateTypes"], ["minor"])
+        self.assertEqual(minor_rule["minimumReleaseAge"], "2 days")
         self.assertEqual(major_rule["matchUpdateTypes"], ["major"])
         self.assertFalse(major_rule["automerge"])
+
+    def test_all_minor_updates_have_two_day_minimum_release_age(self):
+        minor_rules = [
+            rule
+            for rule in self.config["packageRules"]
+            if rule.get("matchUpdateTypes") == ["minor"]
+        ]
+        self.assertTrue(minor_rules)
+        for rule in minor_rules:
+            self.assertEqual(rule.get("minimumReleaseAge"), "2 days")
 
     def test_renovate_workflow_runs_native_runtime_updater(self):
         workflow = (REPO_ROOT / ".github" / "workflows" / "renovate.yml").read_text(

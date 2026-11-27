@@ -62,6 +62,53 @@ class UpdateNativeRuntimeTests(unittest.TestCase):
         ]
         self.assertEqual(self.updater.select_latest_release(releases), "2.8.1")
 
+    def test_select_latest_release_waits_two_days_for_minor_and_skips_to_patch(self):
+        # Current is 2.8.1. Now is 2026-11-30T12:00:00Z.
+        # Case A: 2.9.0 came out 1 day ago -> too young for minor (needs 2 days), stays on 2.8.1.
+        releases_day_1 = [
+            {"tag_name": "v2.9.0", "draft": False, "prerelease": False, "published_at": "2026-11-29T12:00:00Z"},
+            {"tag_name": "v2.8.1", "draft": False, "prerelease": False, "published_at": "2026-11-26T12:00:00Z"},
+        ]
+        self.assertEqual(
+            self.updater.select_latest_release(
+                releases_day_1,
+                current_version="2.8.1",
+                now="2026-11-30T12:00:00Z",
+                minor_cooldown_days=2,
+            ),
+            "2.8.1",
+        )
+        # Case B: Next day (2026-12-01T12:00:00Z), 2.9.0 is 2 days old AND 2.9.1 patch just came out ->
+        # 2.9.x minor line has aged 2 days, so it skips 2.9.0 and selects 2.9.1 directly!
+        releases_day_2_with_patch = [
+            {"tag_name": "v2.9.1", "draft": False, "prerelease": False, "published_at": "2026-12-01T10:00:00Z"},
+            {"tag_name": "v2.9.0", "draft": False, "prerelease": False, "published_at": "2026-11-29T12:00:00Z"},
+            {"tag_name": "v2.8.1", "draft": False, "prerelease": False, "published_at": "2026-11-26T12:00:00Z"},
+        ]
+        self.assertEqual(
+            self.updater.select_latest_release(
+                releases_day_2_with_patch,
+                current_version="2.8.1",
+                now="2026-12-01T12:00:00Z",
+                minor_cooldown_days=2,
+            ),
+            "2.9.1",
+        )
+        # Case C: Patch on current minor (2.8.2) installs same-day without waiting 2 days.
+        releases_same_minor_patch = [
+            {"tag_name": "v2.8.2", "draft": False, "prerelease": False, "published_at": "2026-11-30T11:00:00Z"},
+            {"tag_name": "v2.8.1", "draft": False, "prerelease": False, "published_at": "2026-11-26T12:00:00Z"},
+        ]
+        self.assertEqual(
+            self.updater.select_latest_release(
+                releases_same_minor_patch,
+                current_version="2.8.1",
+                now="2026-11-30T12:00:00Z",
+                minor_cooldown_days=2,
+            ),
+            "2.8.2",
+        )
+
     def test_update_release_files_updates_openchamber_and_opencode(self):
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)

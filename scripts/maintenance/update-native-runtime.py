@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
 import hashlib
 import json
 import os
@@ -51,8 +52,29 @@ def combine_update_types(types: list[str | None]) -> str | None:
     return None
 
 
-def select_latest_release(releases: list[dict]) -> str:
-    candidates: list[tuple[tuple[int, int, int], str]] = []
+def _parse_iso_timestamp(raw: str | None) -> datetime | None:
+    if not raw or not isinstance(raw, str):
+        return None
+    text = raw.strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def select_latest_release(
+    releases: list[dict],
+    *,
+    current_version: str | None = None,
+    now: str | datetime | None = None,
+    minor_cooldown_days: float = 2.0,
+) -> str:
+    candidates: list[tuple[tuple[int, int, int], str, datetime | None]] = []
     for item in releases:
         if not isinstance(item, dict) or item.get("draft") or item.get("prerelease"):
             continue
@@ -61,11 +83,50 @@ def select_latest_release(releases: list[dict]) -> str:
         if not match:
             continue
         clean = f"{int(match.group(1))}.{int(match.group(2))}.{int(match.group(3))}"
-        candidates.append((parse_semver(clean), clean))
+        published = _parse_iso_timestamp(item.get("published_at"))
+        candidates.append((parse_semver(clean), clean, published))
     if not candidates:
         raise ValueError("No stable semantic-version release found.")
-    candidates.sort(key=lambda pair: pair[0], reverse=True)
-    return candidates[0][1]
+    candidates.sort(key=lambda entry: entry[0], reverse=True)
+    if current_version is None or minor_cooldown_days <= 0:
+        return candidates[0][1]
+
+    current_semver = parse_semver(current_version)
+    reference_now = (
+        _parse_iso_timestamp(now)
+        if isinstance(now, str)
+        else (now if isinstance(now, datetime) else datetime.now(timezone.utc))
+    ) or datetime.now(timezone.utc)
+    cooldown_seconds = minor_cooldown_days * 86400.0
+
+    # Earliest publication timestamp of each (major, minor) series.
+    # Once a minor line (e.g. 2.9.0) has soaked for 2 days, any hotfix patch
+    # on that minor line (e.g. 2.9.1 released the next day) is immediately eligible,
+    # skipping 2.9.0 and installing only 2.9.1.
+    series_first_published: dict[tuple[int, int], datetime] = {}
+    for semver, _, published in candidates:
+        if published is None:
+            continue
+        series = (semver[0], semver[1])
+        existing = series_first_published.get(series)
+        if existing is None or published < existing:
+            series_first_published[series] = published
+
+    for semver, clean, published in candidates:
+        if semver <= current_semver:
+            return current_version
+        is_minor_or_major_jump = (semver[0], semver[1]) > (
+            current_semver[0],
+            current_semver[1],
+        )
+        if is_minor_or_major_jump:
+            series_born = series_first_published.get((semver[0], semver[1])) or published
+            if series_born is not None:
+                age_seconds = (reference_now - series_born).total_seconds()
+                if age_seconds < cooldown_seconds:
+                    continue
+        return clean
+    return current_version
 
 
 def fetch_github_releases(owner: str, repo: str) -> list[dict]:
@@ -154,10 +215,12 @@ def update_release_files(
     current_op = release["opencode"]["version"]
 
     target_oc = openchamber_version or select_latest_release(
-        fetch_github_releases("openchamber", "openchamber")
+        fetch_github_releases("openchamber", "openchamber"),
+        current_version=current_oc,
     )
     target_op = opencode_version or select_latest_release(
-        fetch_github_releases("anomalyco", "opencode")
+        fetch_github_releases("anomalyco", "opencode"),
+        current_version=current_op,
     )
 
     oc_type = classify_update(current_oc, target_oc)
