@@ -34,3 +34,72 @@ jobs:
           LOG_LEVEL: info
           RENOVATE_ALLOWED_COMMANDS: '["^python3 scripts/maintenance/refresh-openchamber-release\\.py [0-9]+\\.[0-9]+\\.[0-9]+$"]'
           RENOVATE_REPOSITORIES: ${{ github.repository }}
+
+  native-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Mint a Renovate App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.RENOVATE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RENOVATE_APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Check and update native OpenChamber and OpenCode pins
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          python3 scripts/maintenance/update-native-runtime.py --apply --json-output /tmp/native-update.json
+          updated="$(python3 -c 'import json; print("true" if json.load(open("/tmp/native-update.json"))["updated"] else "false")')"
+          if [[ "$updated" != "true" ]]; then
+            echo "Native runtimes are already up to date."
+            exit 0
+          fi
+          python3 scripts/testing/check-dev-runtime.py
+          title="$(python3 -c 'import json; print(json.load(open("/tmp/native-update.json"))["title"])')"
+          body="$(python3 -c 'import json; print(json.load(open("/tmp/native-update.json"))["body"])')"
+          update_type="$(python3 -c 'import json; print(json.load(open("/tmp/native-update.json"))["update_type"] or "")')"
+          branch="renovate/native-runtime"
+          git config user.name "${{ steps.app-token.outputs.app-slug }}[bot]"
+          git config user.email "${{ steps.app-token.outputs.app-id }}+${{ steps.app-token.outputs.app-slug }}[bot]@users.noreply.github.com"
+          git checkout -B "$branch"
+          git add infrastructure/dev-agent/release.json \
+                  infrastructure/dev-agent/runtime/openchamber/package.json \
+                  infrastructure/dev-agent/runtime/openchamber/package-lock.json
+          if git diff --cached --quiet; then
+            echo "No staged changes in native runtime files."
+            exit 0
+          fi
+          git commit -m "$title"
+          git push --force origin "$branch"
+          gh label create native-runtime --color 0e8a16 --description "Automated native OpenChamber/OpenCode update" --force
+          gh label create major --color d93f0b --description "Major version update requiring manual review" --force
+          pr_number="$(gh pr list --head "$branch" --base main --state open --json number --jq '.[0].number // empty')"
+          if [[ -z "$pr_number" ]]; then
+            pr_url="$(gh pr create --base main --head "$branch" --title "$title" --body "$body" --label native-runtime)"
+            pr_number="${pr_url##*/}"
+          else
+            gh pr edit "$pr_number" --title "$title" --body "$body" --add-label native-runtime
+          fi
+          if [[ "$update_type" == "major" ]]; then
+            gh pr edit "$pr_number" --add-label major
+          else
+            gh pr edit "$pr_number" --remove-label major 2>/dev/null || true
+            gh pr merge "$pr_number" --auto --squash
+          fi

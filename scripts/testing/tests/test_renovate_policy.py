@@ -155,6 +155,15 @@ class RenovatePolicyTests(unittest.TestCase):
         self.assertEqual(major_rule["matchUpdateTypes"], ["major"])
         self.assertFalse(major_rule["automerge"])
 
+    def test_renovate_workflow_runs_native_runtime_updater(self):
+        workflow = (REPO_ROOT / ".github" / "workflows" / "renovate.yml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("native-runtime:", workflow)
+        self.assertIn("scripts/maintenance/update-native-runtime.py", workflow)
+        self.assertIn("scripts/testing/check-dev-runtime.py", workflow)
+        self.assertIn("renovate/native-runtime", workflow)
+
 
 if __name__ == "__main__":
     unittest.main()
