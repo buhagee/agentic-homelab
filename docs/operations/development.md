@@ -593,15 +593,52 @@ sudo systemctl stop qacey-openchamber.service
 sudo systemctl stop qacey-codex-tmux.service
 ```
 
-Stopping tmux ends its active Codex processes. Save work first. Stopping OpenChamber also removes the bridge socket and stops its forwarder.
-If OpenChamber fails unexpectedly, the bridge closes. Browser requests cannot
-start either prerequisite of the forwarder. After checking OpenChamber's
-recovery and its managed backend, explicitly restore the bridge:
+Stopping tmux ends its active Codex processes. Save work first. Stopping
+OpenChamber also removes the bridge socket and stops its forwarder.
+
+### Recover browser ingress after an OpenChamber failure
+
+OpenChamber may restart on failure, but crash recovery of the bridge is manual.
+Browser requests cannot start either prerequisite of the forwarder. Start with
+read-only checks:
 
 ```sh
-sudo systemctl start qacey-openchamber.service
-sudo systemctl start qacey-dev-proxy.socket
+systemctl show qacey-openchamber.service qacey-dev-proxy.socket \
+  --property=Id,ActiveState,SubState,UnitFileState
+sudo journalctl -b -n 100 -u qacey-openchamber.service -u qacey-dev-proxy.socket
+sudo qacey-dev-web status
 ```
+
+Use the journal locally. An active app and an inactive bridge alone do not tell
+you why the bridge stopped. Confirm that browser access was intended before
+the incident and has not been revoked. If managed updates are enrolled, check
+`sudo qacey-dev-deploy status` and pause them before manual recovery. Respect
+any existing maintenance pause. If an update is running or a transaction is
+unfinished, follow [Pause, inspect and recover](#pause-inspect-and-recover)
+first.
+
+Leave the bridge closed if the socket was deliberately stopped, is disabled or
+masked, or the gateway is stopped. A stopped or failed OpenChamber service needs
+separate diagnosis and an explicit decision to bring it up. Starting the socket
+can pull OpenChamber in because of `BindsTo=`. Only restore the socket once
+OpenChamber is already running. From the host or an authorized SSH tunnel
+bound to local loopback, sign in to the loopback OpenChamber listener and
+confirm that the managed backend can list sessions. Its `/health` should
+report `openCodeRunning`, `isOpenCodeReady` and `openCodeSecureConnection`
+as `true` and `openCodeAuthSource` as `user-env`. A successful HTTP health
+response or `systemctl is-active` alone is insufficient.
+
+```sh
+sudo systemctl start qacey-dev-proxy.socket
+sudo stat -c '%F %U:%G %a' /run/qacey-dev-proxy/backend.sock
+```
+
+Expect a Unix socket owned by the enrolled development user and its private
+group (normally `dev-agent:dev-agent`), with mode `600`. If that check fails,
+stop the socket and leave ingress closed. A running gateway can use the
+restored socket without recreating its containers. Verify HTTPS sign-in
+through the IdP and OpenChamber. If access was revoked, use the documented
+gateway `start` procedure only when deliberately reauthorizing it.
 
 The socket is a late member of `multi-user.target` and binds to OpenChamber.
 Its ordering indicates the app unit has started, not that the HTTP backend is
