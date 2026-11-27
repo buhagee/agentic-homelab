@@ -46,7 +46,8 @@ class NativeDeployHookTests(unittest.TestCase):
             content = content.replace("/mnt/hdd1/qacey/db-backups", str(self.backups))
             self.write(self.repo / "scripts/deploy" / name, content)
         self.write(self.repo / "scripts/lib/alert.sh",
-                   'send_alert() { printf "alert:%s\\n" "$1" >> "$TEST_CALLS"; }\n')
+                   'send_alert() { printf "alert:%s\\n" "$1" >> "$TEST_CALLS"; }\n'
+                   'observe_incident() { printf "incident:%s:%s\\n" "$1" "$2" >> "$TEST_CALLS"; }\n')
         self.write(self.repo / "scripts/lib/platform-env.sh",
                    "load_platform_env() { return 0; }\n")
         self.write(self.repo / "scripts/lib/render-config.sh",
@@ -141,7 +142,7 @@ exit "$NATIVE_RESULT"
         self.assertLess(events.index("health"), events.index("native:"))
         self.assertEqual(events.count("native:"), 1)
         self.assertEqual(events.count("build\n"), 1)
-        self.assertIn("alert:Qacey development update failed", events)
+        self.assertIn("incident:native-deploy:failed", events)
         self.assertNotIn("rolling back", self.log.read_text())
 
     def test_platform_deploy_removes_only_retired_project_containers(self):
@@ -198,6 +199,14 @@ exit "$NATIVE_RESULT"
         result = self.run_deploy(self.base)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.events().count("native:"), 2)
+
+    def test_failed_revision_retries_its_notification_without_redeploy(self):
+        target = self.new_target()
+        (self.state / "failed-sha").write_text(target + "\n")
+        result = subprocess.run(["bash", str(self.repo / "scripts/deploy/reconcile.sh")],
+                                env=self.env, capture_output=True, text=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.events().splitlines(), ["incident:platform-deploy:failed"])
 
 
 if __name__ == "__main__":

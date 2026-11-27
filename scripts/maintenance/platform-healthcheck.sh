@@ -21,7 +21,20 @@ for arg in "$@"; do
   esac
 done
 
+# The same script runs inside deploys and from the root-owned timer. Only
+# the timer owns outage notifications; deploys still log and fail the gate.
+sample() {
+  if [[ $DRY_RUN -eq 0 && $EUID -eq 0 ]]; then
+    observe_incident "$@"
+  fi
+}
+
 load_platform_env "$PLATFORM_DIR" || true
+
+if [[ $DRY_RUN -eq 0 && $EUID -eq 0 && -f /etc/systemd/system/qacey-openchamber.service ]]; then
+  python3 "$PLATFORM_DIR/scripts/maintenance/native_memory.py" ||
+    echo "native memory observation failed; see healthcheck journal" >&2
+fi
 
 EXPECTED=(
   adguard cloudflared crawl4ai crowdsec
@@ -42,9 +55,10 @@ if ! docker_output="$(docker ps -a --format $'{{.Names}}\t{{.Status}}' 2>&1)"; t
     exit 0
   fi
   printf '%s\n' "$report"
-  send_alert "Qacey platform health alert" "$report" || true
+  sample docker-inspection failed "$report"
   exit 1
 fi
+sample docker-inspection healthy "Docker inspection succeeded."
 
 while IFS=$'\t' read -r name status; do
   [[ -n "$name" ]] && STATUS["$name"]="$status"
@@ -55,6 +69,7 @@ problems=()
 check_status() {
   local name="$1"
   local status="$2"
+  local before=${#problems[@]}
   if [[ "$status" == *"unhealthy"* ]]; then
     problems+=("UNHEALTHY: $name ($status)")
   elif [[ "$status" == Restarting* ]]; then
@@ -62,12 +77,18 @@ check_status() {
   elif [[ "$status" != Up* ]]; then
     problems+=("DOWN: $name ($status)")
   fi
+  if [[ ${#problems[@]} -gt $before ]]; then
+    sample "container.$name" failed "${problems[-1]}"
+  else
+    sample "container.$name" healthy "$name is up."
+  fi
 }
 
 for name in "${EXPECTED[@]}"; do
   status="${STATUS[$name]:-}"
   if [[ -z "$status" ]]; then
     problems+=("MISSING: $name")
+    sample "container.$name" failed "Missing expected container: $name"
   else
     check_status "$name" "$status"
   fi
@@ -93,5 +114,4 @@ if [[ $DRY_RUN -eq 1 ]]; then
 fi
 
 printf '%s\n' "$report"
-send_alert "Qacey platform health alert" "$report" || true
 exit 1

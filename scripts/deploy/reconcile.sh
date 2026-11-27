@@ -22,6 +22,9 @@ if [[ "$TIP" == "$last_good" ]]; then
   exit 0
 fi
 if [[ "$TIP" == "$failed" ]]; then
+  # Retry an undelivered incident without retrying a failed platform revision.
+  source scripts/lib/alert.sh
+  observe_incident platform-deploy failed "Platform revision $TIP awaits a fix-forward."
   exit 0
 fi
 

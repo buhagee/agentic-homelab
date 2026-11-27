@@ -122,7 +122,7 @@ fi
 source scripts/lib/alert.sh
 
 alert() {
-  send_alert "$1" "$2" || true
+  observe_incident platform-deploy failed "$1: $2"
 }
 
 die() {
@@ -143,17 +143,23 @@ compose() {
 }
 
 refresh_native_development() {
-  local helper=/usr/local/sbin/qacey-dev-deploy
+  local helper=/usr/local/sbin/qacey-dev-deploy output
   # A separate, explicit bootstrap installs this root-owned boundary. Never run
   # privileged native provisioning directly from this operator-owned checkout.
   if [[ ! -e "$helper" && ! -L "$helper" ]]; then
     return 0
   fi
-  if [[ -x "$helper" ]] && sudo -n "$helper" apply "$SHA"; then
+  if [[ -x "$helper" ]] && output="$(sudo -n "$helper" apply "$SHA")"; then
+    echo "$output"
+    case "$output" in
+      'Native development deployment: applied (verified).'|'Native development deployment: unchanged (inputs-unchanged-no-repair-attempted).')
+        observe_incident native-deploy healthy "Native deployment verified for $SHA." ;;
+      *) observe_incident native-deploy unknown "Native update deferred." ;;
+    esac
     return 0
   fi
   echo "ERROR: platform $SHA is healthy; native development update requires attention"
-  alert "Qacey development update failed" \
+  observe_incident native-deploy failed \
     "Platform $SHA is healthy. Native updating failed; inspect qacey-dev-deploy status. The platform was not rolled back."
   return 1
 }
@@ -215,6 +221,7 @@ if [[ "$ALREADY_DEPLOYED" -eq 1 ]]; then
   bash scripts/maintenance/platform-healthcheck.sh || die "healthcheck failed for already-deployed SHA $SHA"
   retire_containers || die "container retirement failed for already-deployed SHA $SHA"
   printf '%s\n' "$SHA" > "$LAST_GOOD_FILE"
+  observe_incident platform-deploy healthy "Platform healthy at $SHA."
   refresh_native_development || :
   exit 0
 fi
@@ -237,6 +244,7 @@ if deploy_stack; then
   printf '%s\n' "$SHA" > "$LAST_GOOD_FILE"
   rm -f "$FAILED_SHA_FILE"
   echo "=== Qacey deploy succeeded: $SHA ==="
+  observe_incident platform-deploy healthy "Platform healthy at $SHA."
   # Native state has its own transaction. A failed or deferred native update
   # must never enter the platform rollback path below.
   refresh_native_development || :
