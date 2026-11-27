@@ -173,7 +173,7 @@ jobs:
           mapfile -t policy < <(sed -nE '/^(SuccessExitStatus|Restart|StartLimitIntervalSec|StartLimitBurst)=/s/^/--property=/p' \
             infrastructure/dev-agent/qacey-openchamber.service.in)
           units=()
-          trap 'if ((${#units[@]})); then sudo -n systemctl stop "${units[@]}" || true; fi' EXIT
+          trap 'if ((${#units[@]})); then sudo -n systemctl stop "${units[@]}" 2>/dev/null || true; fi' EXIT
           for mode in stop error kill; do
             unit="qacey-ci-${fixture##*.}-$mode.service"
             units+=("$unit")
@@ -194,16 +194,18 @@ jobs:
               fi
               echo "Clean systemd stop after one start ($result): PASS"
             else
+              # A rate-limited unit can retain the original failure in Result.
               for ((attempt = 0; attempt < 50; attempt++)); do
-                result="$(systemctl show "$unit" -p Result --value)"
-                [[ "$result" != start-limit-hit ]] || break
+                active_state="$(systemctl show "$unit" -p ActiveState --value)"
+                [[ "$active_state" != failed ]] || break
                 sleep .2
               done
               starts="$(wc -l < "$state.starts")"
-              if [[ "$result" != start-limit-hit || "$starts" != 3 ]]; then
-                echo "Expected $mode to hit the rate limit after three starts; got: $result ($starts starts)"
+              result="$(systemctl show "$unit" -p Result --value)"
+              if [[ "$active_state" != failed || "$starts" != 3 ]]; then
+                echo "Expected $mode to fail after three starts; got: $active_state/$result ($starts starts)"
                 exit 1
               fi
-              echo "Systemd $mode hit the rate limit after $starts starts: PASS"
+              echo "Systemd $mode stopped retrying after $starts starts ($result): PASS"
             fi
           done
