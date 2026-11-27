@@ -560,7 +560,11 @@ unit may leave restoration blocked.
    edge as described in [Stop, revoke, update and recover](#stop-revoke-update-and-recover)
    while leaving the gateway state available for the updater to record.
 2. If the rollout fails after the old stop, record the updater's status and
-   reason before pausing, since pause changes them. Wait for
+   reason before pausing, since pause changes them. Status records the
+   generic `fix-forward-retry-required` reason; obtain the specific helper
+   error from the failed deployment attempt's output (for timer-driven
+   attempts, `sudo journalctl -b -u qacey-deploy-reconcile.service --since 'WINDOW_START' --no-pager`).
+   Wait for
    `sudo qacey-dev-deploy pause` to succeed before intervening. Verify the
    same transaction is pending and ingress is closed. Inspect the phase,
    unit state and journal from the independent terminal (substitute the
@@ -578,9 +582,9 @@ unit may leave restoration blocked.
    `SubState=failed`, `Result=exit-code`, `MainPID=0`, `ExecMainCode=1`
    (exited), and `ExecMainStatus=143`. The journal must show the stop and
    `code=exited, status=143` for that invocation. The pending transaction must
-   be in `publishing` with `native-stop-failed` if the stop command failed, or
-   in `starting` with `native-unit-failed-or-transitional` if the stop command
-   succeeded but restore rejected the retained failed state. If the evidence
+   be in `publishing` and the helper must have reported `native-stop-failed`,
+   or be in `starting` and the helper must have reported
+   `native-unit-failed-or-transitional`. If the evidence
    differs or is incomplete (including a signal kill, timeout, OOM, or start
    rate limit), leave the transaction paused and review the cause.
 4. For that exact case only, run `sudo systemctl reset-failed qacey-openchamber.service`
