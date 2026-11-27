@@ -79,6 +79,17 @@ class AutomergePolicyTests(unittest.TestCase):
             )
         )
 
+    def test_renovate_versions_env_major_passes_for_manual_merge(self):
+        # Major label on versions.env still passes CI check so maintainer can manually merge it;
+        # major native runtime updates fail automerge-policy unless labeled/reviewed or split.
+        self.assertIsNone(
+            evaluate(
+                "qacey-renovate[bot]",
+                ["major"],
+                ["versions.env"],
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

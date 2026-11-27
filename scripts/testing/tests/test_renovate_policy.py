@@ -160,9 +160,12 @@ class RenovatePolicyTests(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn("native-runtime:", workflow)
+        self.assertIn("native-runtime-publish:", workflow)
+        self.assertIn("persist-credentials: false", workflow)
         self.assertIn("scripts/maintenance/update-native-runtime.py", workflow)
         self.assertIn("scripts/testing/check-dev-runtime.py", workflow)
         self.assertIn("renovate/native-runtime", workflow)
+        self.assertIn("renovate/native-runtime-major", workflow)
 
 
 if __name__ == "__main__":

@@ -36,8 +36,60 @@ jobs:
           RENOVATE_REPOSITORIES: ${{ github.repository }}
 
   native-runtime:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    outputs:
+      updated: ${{ steps.update.outputs.updated }}
+      update_type: ${{ steps.update.outputs.update_type }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Check and verify native OpenChamber and OpenCode pins
+        id: update
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/native-update-artifact
+          python3 scripts/maintenance/update-native-runtime.py --apply --json-output /tmp/native-update-artifact/summary.json
+          updated="$(python3 -c 'import json; print("true" if json.load(open("/tmp/native-update-artifact/summary.json"))["updated"] else "false")')"
+          echo "updated=$updated" >> "$GITHUB_OUTPUT"
+          if [[ "$updated" != "true" ]]; then
+            echo "update_type=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          python3 scripts/testing/check-dev-runtime.py
+          update_type="$(python3 -c 'import json; print(json.load(open("/tmp/native-update-artifact/summary.json"))["update_type"] or "")')"
+          echo "update_type=$update_type" >> "$GITHUB_OUTPUT"
+          cp infrastructure/dev-agent/release.json /tmp/native-update-artifact/release.json
+          cp infrastructure/dev-agent/runtime/openchamber/package.json /tmp/native-update-artifact/package.json
+          cp infrastructure/dev-agent/runtime/openchamber/package-lock.json /tmp/native-update-artifact/package-lock.json
+
+      - name: Upload verified native runtime manifests
+        if: steps.update.outputs.updated == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-runtime-manifests
+          path: /tmp/native-update-artifact/
+          retention-days: 1
+
+  native-runtime-publish:
+    if: github.ref == 'refs/heads/main' && needs.native-runtime.outputs.updated == 'true'
+    needs: native-runtime
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Mint a Renovate App token
         id: app-token
@@ -48,37 +100,47 @@ jobs:
 
       - uses: actions/checkout@v4
         with:
+          ref: main
           token: ${{ steps.app-token.outputs.token }}
           fetch-depth: 0
 
-      - uses: actions/setup-python@v5
+      - name: Download verified native runtime manifests
+        uses: actions/download-artifact@v4
         with:
-          python-version: "3.14"
+          name: native-runtime-manifests
+          path: /tmp/native-update-artifact
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-
-      - name: Check and update native OpenChamber and OpenCode pins
+      - name: Publish native runtime PR
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           set -euo pipefail
-          python3 scripts/maintenance/update-native-runtime.py --apply --json-output /tmp/native-update.json
-          updated="$(python3 -c 'import json; print("true" if json.load(open("/tmp/native-update.json"))["updated"] else "false")')"
-          if [[ "$updated" != "true" ]]; then
-            echo "Native runtimes are already up to date."
-            exit 0
+          python3 - <<'PY'
+          import hashlib, json, pathlib
+          art = pathlib.Path("/tmp/native-update-artifact")
+          summary = json.loads((art / "summary.json").read_text())
+          release = json.loads((art / "release.json").read_text())
+          pkg = (art / "package.json").read_bytes()
+          lock = (art / "package-lock.json").read_bytes()
+          assert summary["updated"] is True
+          assert summary["update_type"] in ("patch", "minor", "major")
+          assert hashlib.sha256(pkg).hexdigest() == release["openchamber"]["manifest_sha256"]
+          assert hashlib.sha256(lock).hexdigest() == release["openchamber"]["lock_sha256"]
+          pathlib.Path("infrastructure/dev-agent/release.json").write_text(json.dumps(release, indent=2) + "\n")
+          pathlib.Path("infrastructure/dev-agent/runtime/openchamber/package.json").write_bytes(pkg)
+          pathlib.Path("infrastructure/dev-agent/runtime/openchamber/package-lock.json").write_bytes(lock)
+          PY
+          title="$(python3 -c 'import json; print(json.load(open("/tmp/native-update-artifact/summary.json"))["title"])')"
+          body="$(python3 -c 'import json; print(json.load(open("/tmp/native-update-artifact/summary.json"))["body"])')"
+          update_type="$(python3 -c 'import json; print(json.load(open("/tmp/native-update-artifact/summary.json"))["update_type"])')"
+          if [[ "$update_type" == "major" ]]; then
+            branch="renovate/native-runtime-major"
+          else
+            branch="renovate/native-runtime"
           fi
-          python3 scripts/testing/check-dev-runtime.py
-          title="$(python3 -c 'import json; print(json.load(open("/tmp/native-update.json"))["title"])')"
-          body="$(python3 -c 'import json; print(json.load(open("/tmp/native-update.json"))["body"])')"
-          update_type="$(python3 -c 'import json; print(json.load(open("/tmp/native-update.json"))["update_type"] or "")')"
-          branch="renovate/native-runtime"
           git config user.name "${{ steps.app-token.outputs.app-slug }}[bot]"
           git config user.email "${{ steps.app-token.outputs.app-id }}+${{ steps.app-token.outputs.app-slug }}[bot]@users.noreply.github.com"
-          git checkout -B "$branch"
+          git checkout -B "$branch" origin/main
           git add infrastructure/dev-agent/release.json \
                   infrastructure/dev-agent/runtime/openchamber/package.json \
                   infrastructure/dev-agent/runtime/openchamber/package-lock.json
@@ -91,15 +153,18 @@ jobs:
           gh label create native-runtime --color 0e8a16 --description "Automated native OpenChamber/OpenCode update" --force
           gh label create major --color d93f0b --description "Major version update requiring manual review" --force
           pr_number="$(gh pr list --head "$branch" --base main --state open --json number --jq '.[0].number // empty')"
-          if [[ -z "$pr_number" ]]; then
-            pr_url="$(gh pr create --base main --head "$branch" --title "$title" --body "$body" --label native-runtime)"
-            pr_number="${pr_url##*/}"
-          else
-            gh pr edit "$pr_number" --title "$title" --body "$body" --add-label native-runtime
-          fi
           if [[ "$update_type" == "major" ]]; then
-            gh pr edit "$pr_number" --add-label major
+            if [[ -z "$pr_number" ]]; then
+              gh pr create --base main --head "$branch" --title "$title" --body "$body" --label native-runtime --label major
+            else
+              gh pr edit "$pr_number" --title "$title" --body "$body" --add-label native-runtime --add-label major
+            fi
           else
-            gh pr edit "$pr_number" --remove-label major 2>/dev/null || true
+            if [[ -z "$pr_number" ]]; then
+              pr_url="$(gh pr create --base main --head "$branch" --title "$title" --body "$body" --label native-runtime)"
+              pr_number="${pr_url##*/}"
+            else
+              gh pr edit "$pr_number" --title "$title" --body "$body" --add-label native-runtime
+            fi
             gh pr merge "$pr_number" --auto --squash
           fi

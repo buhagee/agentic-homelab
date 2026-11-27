@@ -707,6 +707,7 @@ class BootstrapTests(Fixture):
         self.assertNotEqual(launcher.read_bytes(), before)
         target = launcher.read_text().splitlines()[1].split()[4]
         self.assertTrue((self.root / target.lstrip('/')).is_file())
+        self.assertTrue((self.root / target.lstrip('/')).with_name('release.json').is_file())
 
 
 if __name__ == '__main__':

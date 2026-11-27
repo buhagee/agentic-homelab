@@ -45,7 +45,7 @@ GIT = ['/usr/bin/git', '-c', 'core.hooksPath=/dev/null', '-c', 'credential.helpe
        '-c', 'core.askPass=/bin/false', '-c', 'protocol.allow=never',
        '-c', 'protocol.https.allow=always', '-c', 'http.followRedirects=false',
        '-c', 'core.autocrlf=false', '-c', 'core.fsmonitor=false']
-UPDATER_FILES = ('deployment.py', 'deployment_host.py', 'deployment_probe.py', 'web_config.py')
+UPDATER_FILES = ('deployment.py', 'deployment_host.py', 'deployment_probe.py', 'web_config.py', 'release.json')
 INPUTS = (
     'scripts/setup/install-codex.py', 'scripts/setup/install-dev-agent.py',
     'scripts/setup/install-dev-web.py', 'scripts/setup/install-dev-autodeploy.py',
