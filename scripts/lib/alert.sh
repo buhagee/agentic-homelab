@@ -8,6 +8,11 @@ PLATFORM_DIR="${PLATFORM_DIR:-$(cd "${ALERT_LIB_DIR}/../.." && pwd)}"
 # shellcheck source=scripts/lib/platform-env.sh
 source "${PLATFORM_DIR}/scripts/lib/platform-env.sh"
 
+observe_incident() {
+  (load_platform_env "$PLATFORM_DIR" && python3 "$ALERT_LIB_DIR/incident.py" "$@") ||
+    echo "incident observation or delivery failed: $1" >&2
+}
+
 send_alert() {
   local subject="${1:?alert subject required}"
   local body="${2:-$subject}"
