@@ -278,6 +278,10 @@ def openchamber_backend(node, package, binary, project, env):
             os.killpg(process.pid, signal.SIGKILL)
             raise RuntimeError('OpenChamber left a child process after shutdown; fixture group was cleaned up.')
     print('OpenChamber owns a ready private authenticated OpenCode backend; application login boundary: PASS')
+    # The foreground CLI currently exits numerically with 128 + SIGTERM;
+    # accept exit 0 too if a future release reports a normal exit on shutdown.
+    assert process.returncode in (0, 143), f'Unexpected OpenChamber shutdown exit: {process.returncode}'
+    print(f'OpenChamber foreground shutdown on SIGTERM (exit {process.returncode}): PASS')
 
 
 def main():

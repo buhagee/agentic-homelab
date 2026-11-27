@@ -86,6 +86,7 @@ class ProvisionTests(unittest.TestCase):
         self.assertEqual(web['Service'].get('MemoryMax'), '12G')
         self.assertEqual(web['Service'].get('MemorySwapMax'), '2G')
         self.assertEqual(web['Service'].get('OOMPolicy'), 'kill')
+        self.assertEqual(web['Service'].get('SuccessExitStatus'), '143')
         self.assertEqual(web['Service'].get('Restart'), 'on-failure')
         self.assertEqual(web['Service'].get('RestartSec'), '15s')
         self.assertEqual(web['Unit'].get('StartLimitBurst'), '3')

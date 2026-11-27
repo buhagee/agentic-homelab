@@ -97,6 +97,12 @@ source revision, Node path, port and versions. Four units are installed disabled
 | `qacey-dev-proxy.socket` | Mode `0600` Unix socket owned by the recorded development account. |
 | `qacey-dev-proxy.service` | Socket-activated forwarding to loopback OpenChamber. It does not start a deliberately stopped app. |
 
+Once the updated unit is loaded, systemd treats OpenChamber's numeric exit
+code `143` as a clean shutdown.
+An unsolicited exit with the same numeric code is indistinguishable and also
+does not trigger a restart. Other failures, including SIGKILL and OOM kills,
+remain subject to the service's bounded `Restart=on-failure` policy.
+
 The pinned OpenCode policy preserves unrelated OpenChamber policy keys. Native
 launch rejects shared OpenCode service mode and leaves backend-port/adoption
 variables unset. Passive relay startup is disabled; this is not a network ban on
@@ -527,6 +533,67 @@ The recorded Oracle digest can be reused only while the rendered edge fragment
 is unchanged. An edge-route change blocks publication until the operator prepares
 and verifies the new route and explicitly repeats enrollment with its digest.
 The updater does not change Oracle or attest to its remote state.
+
+### First rollout of the OpenChamber clean-stop policy
+
+**HOLD: Do not merge the change until the operator has scheduled a supervised
+maintenance window and paused native updates.** Record the window's date, start
+and end times with time zone, expected browser outage, and responsible operator.
+Confirm independent administrative access that works with OpenChamber and its
+gateway offline. Finish affected work and check `sudo qacey-dev-deploy status`;
+resolve any unfinished transaction through its recorded source before pausing
+for this rollout.
+
+The updater closes ingress and stops OpenChamber under the **old** unit before
+publishing the unit with `SuccessExitStatus=143`. The old unit may record that
+stop as a failure. The updater rejects failed units, so even reloading the new
+unit may leave restoration blocked.
+
+1. In the window, record the installation's current active and enabled states
+   and keep clients and automated work idle.
+   After the change has merged and the platform deployment is healthy, resume
+   native updates and supervise normal reconciliation through the idle checks
+   and the first update. If the app or ingress is deliberately offline, leave
+   it offline; the updater preserves that intent. Leave components that should
+   return running for the updater to record and stop itself. If access must
+   stay blocked throughout the window, restrict the development route at the
+   edge as described in [Stop, revoke, update and recover](#stop-revoke-update-and-recover)
+   while leaving the gateway state available for the updater to record.
+2. If the rollout fails after the old stop, record the updater's status and
+   reason before pausing, since pause changes them. Status records the
+   generic `fix-forward-retry-required` reason; obtain the specific helper
+   error from the failed deployment attempt's output (for timer-driven
+   attempts, `sudo journalctl -b -u qacey-deploy-reconcile.service --since 'WINDOW_START' --no-pager`).
+   Wait for
+   `sudo qacey-dev-deploy pause` to succeed before intervening. Verify the
+   same transaction is pending and ingress is closed. Inspect the phase,
+   unit state and journal from the independent terminal (substitute the
+   window start):
+
+   ```sh
+   sudo qacey-dev-deploy status
+   sudo systemctl show qacey-openchamber.service \
+     --property=ActiveState,SubState,Result,MainPID,ExecMainCode,ExecMainStatus,ExecMainExitTimestamp
+   sudo journalctl -b -u qacey-openchamber.service --since 'WINDOW_START' --no-pager
+   ```
+
+3. A reset is appropriate only if the journal ties the failure to this
+   transaction's deliberate stop under the old unit: `ActiveState=failed`,
+   `SubState=failed`, `Result=exit-code`, `MainPID=0`, `ExecMainCode=1`
+   (exited), and `ExecMainStatus=143`. The journal must show the stop and
+   `code=exited, status=143` for that invocation. The pending transaction must
+   be in `publishing` and the helper must have reported `native-stop-failed`,
+   or be in `starting` and the helper must have reported
+   `native-unit-failed-or-transitional`. If the evidence
+   differs or is incomplete (including a signal kill, timeout, OOM, or start
+   rate limit), leave the transaction paused and review the cause.
+4. For that exact case only, run `sudo systemctl reset-failed qacey-openchamber.service`
+   and confirm it is inactive. Then run `sudo qacey-dev-deploy resume` and let
+   reconciliation retry the recorded revision. Keep the deployment journal
+   intact; leave starts and ingress restoration to the updater. Confirm the
+   revision was applied, the transaction cleared, and active and enabled states
+   match the recorded intent before lifting any temporary edge restriction. If
+   recovery fails, pause again and follow [Pause, inspect and recover](#pause-inspect-and-recover).
 
 ### Pause, inspect and recover
 
