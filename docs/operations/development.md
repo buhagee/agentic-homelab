@@ -593,15 +593,71 @@ sudo systemctl stop qacey-openchamber.service
 sudo systemctl stop qacey-codex-tmux.service
 ```
 
-Stopping tmux ends its active Codex processes. Save work first. Stopping OpenChamber also removes the bridge socket and stops its forwarder.
-If OpenChamber fails unexpectedly, the bridge closes. Browser requests cannot
-start either prerequisite of the forwarder. After checking OpenChamber's
-recovery and its managed backend, explicitly restore the bridge:
+Stopping tmux ends its active Codex processes. Save work first. Stopping
+OpenChamber also removes the bridge socket and stops its forwarder.
+
+### Recover browser ingress after an OpenChamber failure
+
+OpenChamber may restart on failure, but crash recovery of the bridge is manual.
+Browser requests cannot start either prerequisite of the forwarder. Start with
+these read-only checks for diagnosis only:
 
 ```sh
-sudo systemctl start qacey-openchamber.service
-sudo systemctl start qacey-dev-proxy.socket
+systemctl show qacey-openchamber.service qacey-dev-proxy.socket \
+  --property=Id,ActiveState,SubState,UnitFileState
+sudo journalctl -b -n 100 -u qacey-openchamber.service -u qacey-dev-proxy.socket
+sudo qacey-dev-web status
 ```
+
+Use the journal locally. An active app and an inactive bridge alone do not tell
+you why the bridge stopped. If managed updates are enrolled, use
+`sudo qacey-dev-deploy status` to note whether the updater was already paused,
+then run `sudo qacey-dev-deploy pause`. Do not proceed unless it succeeds. If
+an update holds the lock, retry the pause once the update finishes.
+
+After a successful pause, rerun `sudo qacey-dev-deploy status` and confirm
+`paused` is `true` and `transaction_phase` is `null`. If a transaction is
+unfinished, leave the bridge closed and follow
+[Pause, inspect and recover](#pause-inspect-and-recover). Repeat the unit,
+journal and gateway checks above: an update may have changed them before the
+pause took effect. If managed updates are not enrolled, use current observations
+for the same recovery checks.
+
+Confirm with the operator that browser access was intended before the incident,
+has not been revoked, and may be restored now. Check whether the operator
+stopped the app or socket and whether any maintenance still requires ingress
+to remain closed. Proceed only if the gateway is running and the socket is
+inactive, enabled and unmasked, with no deliberate stop or revocation to
+preserve. A stopped or failed OpenChamber service needs separate diagnosis and
+an explicit decision to bring it up. With OpenChamber running, sign in to its
+loopback listener from the host or through an authorized SSH tunnel bound to
+local loopback. Confirm that the managed backend can list sessions. Its
+`/health` should report `openCodeRunning`, `isOpenCodeReady` and
+`openCodeSecureConnection` as `true` and `openCodeAuthSource` as `user-env`.
+A successful HTTP health response or `systemctl is-active` alone is insufficient.
+
+The command below rechecks that OpenChamber is active immediately before
+starting the socket. The check and `systemctl start` are separate operations:
+if OpenChamber stops in between, the socket's `BindsTo=` can pull it back up.
+Run this only if the operator authorizes that residual risk; otherwise leave
+the socket closed.
+
+```sh
+systemctl is-active --quiet qacey-openchamber.service &&
+  sudo systemctl start qacey-dev-proxy.socket &&
+  sudo stat -c '%F %U:%G %a' /run/qacey-dev-proxy/backend.sock
+```
+
+Expect a Unix socket owned by the enrolled development user and its private
+group (normally `dev-agent:dev-agent`), with mode `600`. If that check fails,
+stop the socket and leave ingress closed. A running gateway can use the
+restored socket without recreating its containers. Verify HTTPS sign-in
+through the IdP and OpenChamber. If access was revoked, use the documented
+gateway `start` procedure only when deliberately reauthorizing it.
+
+Run `sudo qacey-dev-deploy resume` only if this recovery introduced the pause,
+ingress verification succeeded, and maintenance is complete. Leave a pause in
+place if it predates recovery or its ownership is unclear.
 
 The socket is a late member of `multi-user.target` and binds to OpenChamber.
 Its ordering indicates the app unit has started, not that the HTTP backend is
