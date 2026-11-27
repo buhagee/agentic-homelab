@@ -39,6 +39,57 @@ class AutomergePolicyTests(unittest.TestCase):
             evaluate("alice", [], ["docker-compose.platform.yml"])
         )
 
+    def test_renovate_native_runtime_patch_or_minor_passes(self):
+        self.assertIsNone(
+            evaluate(
+                "qacey-renovate[bot]",
+                ["native-runtime"],
+                [
+                    "infrastructure/dev-agent/release.json",
+                    "infrastructure/dev-agent/runtime/openchamber/package.json",
+                    "infrastructure/dev-agent/runtime/openchamber/package-lock.json",
+                ],
+            )
+        )
+
+    def test_renovate_native_runtime_release_only_passes(self):
+        self.assertIsNone(
+            evaluate(
+                "qacey-renovate[bot]",
+                ["native-runtime"],
+                ["infrastructure/dev-agent/release.json"],
+            )
+        )
+
+    def test_renovate_native_runtime_major_passes_for_manual_merge(self):
+        self.assertIsNone(
+            evaluate(
+                "qacey-renovate[bot]",
+                ["native-runtime", "major"],
+                ["infrastructure/dev-agent/release.json"],
+            )
+        )
+
+    def test_renovate_mixing_versions_and_native_runtime_fails(self):
+        self.assertIsNotNone(
+            evaluate(
+                "qacey-renovate[bot]",
+                ["native-runtime"],
+                ["versions.env", "infrastructure/dev-agent/release.json"],
+            )
+        )
+
+    def test_renovate_versions_env_major_passes_for_manual_merge(self):
+        # Major label on versions.env still passes CI check so maintainer can manually merge it;
+        # major native runtime updates fail automerge-policy unless labeled/reviewed or split.
+        self.assertIsNone(
+            evaluate(
+                "qacey-renovate[bot]",
+                ["major"],
+                ["versions.env"],
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

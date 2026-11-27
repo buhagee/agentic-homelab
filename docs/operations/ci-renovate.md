@@ -113,21 +113,21 @@ branch-protection bypass actor; it must still satisfy approvals and checks.
 
 The `opencode-smoke` required check validates native development packaging.
 Renovate tracks annotated values in `versions.env`, including the native
-gateway's Docker images. Review native executable version and checksum changes
-in `infrastructure/codex/release.json` and
-`infrastructure/dev-agent/release.json` and update OpenChamber's lockfile when
-its package changes. [Managed native deployments](development.md#managed-updates-through-qacey)
-apply those reviewed changes to enrolled hosts when idle.
+gateway's Docker images, and tracks `@openchamber/web` in
+`infrastructure/dev-agent/release.json` via `scripts/maintenance/refresh-openchamber-release.py`
+(auto-merging patch and minor updates after a 2-day soak on minors, and holding major updates with the `major` label).
+[Managed native deployments](development.md#managed-updates-through-qacey)
+apply those merged changes to enrolled hosts when idle.
 
 ## Automerge path
 
-1. Renovate opens a patch or minor PR touching only `versions.env`.
-2. It adds the `stateless` or `stateful` label.
+1. Renovate opens a patch or minor PR touching only `versions.env` (or touching only `infrastructure/dev-agent/release.json` and `infrastructure/dev-agent/runtime/openchamber/package*.json`).
+2. It adds the `stateless`, `stateful`, or `native-runtime` label.
 3. CI runs the required checks.
 4. GitHub auto-merge merges when every check is green.
 
 The `automerge-policy` job fails any Renovate PR that changes files outside
-`versions.env`.
+`versions.env` or the allowlisted native runtime manifest files.
 
 ## Major updates
 

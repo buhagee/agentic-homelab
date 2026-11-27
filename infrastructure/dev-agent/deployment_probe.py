@@ -18,7 +18,7 @@ import urllib.parse
 import urllib.request
 
 
-ACTIVITY_VERSIONS = {('2.8.0', '2.4.1')}
+ACTIVITY_VERSIONS = {('2.8.0', '2.4.1'), ('2.8.1', '2.4.2')}
 MAX_RESPONSE = 2 * 1024 * 1024
 MAX_REQUESTS = 256
 MAX_LOCATIONS = 32

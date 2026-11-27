@@ -133,13 +133,16 @@ class ProvisionTests(unittest.TestCase):
     def test_policy_preserves_unrelated_values_and_rejects_conflicting_binary(self):
         directory = self.host / 'etc/openchamber'
         directory.mkdir()
+        directory.chmod(0o755)
         policy = directory / 'policy.json'
         policy.write_text('{"someExistingPolicy": true}')
+        policy.chmod(0o644)
         self.setup.main(['--apply'])
         data = json.loads(policy.read_text())
         self.assertTrue(data['someExistingPolicy'])
         self.assertNotEqual(data.get('enterpriseMode'), True)
-        self.assertEqual(data['opencodeBinary'], str(self.home / '.local/share/qacey-dev/runtime/opencode-2.4.1/opencode'))
+        expected_opencode = json.loads((ASSETS / 'release.json').read_text())['opencode']['version']
+        self.assertEqual(data['opencodeBinary'], str(self.home / f'.local/share/qacey-dev/runtime/opencode-{expected_opencode}/opencode'))
         data['opencodeBinary'] = '/unrelated/tool'
         policy.write_text(json.dumps(data))
         before = self.record.read_bytes()
@@ -221,7 +224,8 @@ class ProvisionTests(unittest.TestCase):
         self.setup.main(['--apply'])
         policy = self.host / 'etc/openchamber/policy.json'
         target = json.loads(policy.read_text())['opencodeBinary']
-        old = target.replace('opencode-2.4.1/', 'opencode-2.4.0/')
+        expected_opencode = json.loads((ASSETS / 'release.json').read_text())['opencode']['version']
+        old = target.replace(f'opencode-{expected_opencode}/', 'opencode-2.4.0/')
         write = self.setup.foundation.write_atomic
         for when in ('before', 'after'):
             with self.subTest(when=when):

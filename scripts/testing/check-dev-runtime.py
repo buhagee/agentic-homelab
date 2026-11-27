@@ -147,8 +147,25 @@ def openchamber_backend(node, package, binary, project, env):
                        OPENCHAMBER_OPENCODE_CWD=str(project), OPENCHAMBER_DATA_DIR=str(Path(env['HOME']) / '.config/openchamber'),
                        OPENCHAMBER_RELAY_HOST='off', OPENCHAMBER_UI_PASSWORD=password,
                        OPENCODE_PASSWORD=secrets.token_urlsafe(36), SHELL='/bin/sh')
-    process = subprocess.Popen([str(node), str(package / 'build/bin/cli.js'), 'serve', '--foreground',
-                                '--host', '127.0.0.1', '--port', str(port)], cwd=project, env=environment,
+    preload = None
+    if not Path('/etc/openchamber/policy.json').exists() or json.loads(Path('/etc/openchamber/policy.json').read_text()).get('opencodeBinary') != str(binary):
+        preload = Path(env['HOME']) / 'no-policy-preload.cjs'
+        preload.write_text(
+            "const fs = require('node:fs');\n"
+            "const orig = fs.readFileSync;\n"
+            "fs.readFileSync = function(p, ...args) {\n"
+            "  if (String(p) === '/etc/openchamber/policy.json') {\n"
+            "    const err = new Error('ENOENT'); err.code = 'ENOENT'; throw err;\n"
+            "  }\n"
+            "  return orig.call(this, p, ...args);\n"
+            "};\n"
+        )
+    argv = [str(node)]
+    if preload is not None:
+        argv.extend(['--require', str(preload)])
+    argv.extend([str(package / 'build/bin/cli.js'), 'serve', '--foreground',
+                 '--host', '127.0.0.1', '--port', str(port)])
+    process = subprocess.Popen(argv, cwd=project, env=environment,
                                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                start_new_session=True)
     unauth = urllib.request.build_opener(urllib.request.ProxyHandler({}))

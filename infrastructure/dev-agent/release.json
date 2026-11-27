@@ -1,23 +1,23 @@
 {
   "schema": 1,
   "opencode": {
-    "version": "2.4.1",
+    "version": "2.4.2",
     "assets": {
       "x64": {
-        "url": "https://github.com/anomalyco/opencode/releases/download/v2.4.1/opencode-linux-x64.tar.gz",
-        "sha256": "9ddd18e3faf64eaeccf6a0fcbc96a5c7a14520ae5fd5b61e5be51d894f478b47"
+        "url": "https://github.com/anomalyco/opencode/releases/download/v2.4.2/opencode-linux-x64.tar.gz",
+        "sha256": "452912288f934d1771bd5bd0d8611ba3a6adc3db3ac3333c37facf373770ba66"
       },
       "arm64": {
-        "url": "https://github.com/anomalyco/opencode/releases/download/v2.4.1/opencode-linux-arm64.tar.gz",
-        "sha256": "cb28cf94541aeb62a4b2ea5997a99b5dd6bae595a772f36fbe279299f2032a4f"
+        "url": "https://github.com/anomalyco/opencode/releases/download/v2.4.2/opencode-linux-arm64.tar.gz",
+        "sha256": "bf8d18dde87224629341ff398e76c7c17216b9b406affc728b6c1a5c136abf93"
       }
     }
   },
   "openchamber": {
-    "version": "2.8.0",
-    "url": "https://github.com/openchamber/openchamber/releases/download/v2.8.0/openchamber-web-2.8.0.tgz",
-    "sha256": "21e5cdb3d6502f61ad5d8ff74689336af475106a06e7dcfb372405d4f6dbde21",
-    "manifest_sha256": "0950af38c08644b5d9fb5fe37e2822116bd4554239a219d40a336ef83daa2106",
-    "lock_sha256": "3497b0dc9d22e1a30e96e3f0503a36b01c5ed9303a4e242e798b1e11e036e8e1"
+    "version": "2.8.1",
+    "url": "https://github.com/openchamber/openchamber/releases/download/v2.8.1/openchamber-web-2.8.1.tgz",
+    "sha256": "07c248f9779dbf02cd91b9ed2728291a3885e02af7eacfa8303ed80c131398ae",
+    "manifest_sha256": "29a63c7d2edad8bf323235cc5eefa60699243af1f7b07d8f0c6916cffed800be",
+    "lock_sha256": "870301ed958092ad9d61795b5e40c8e9a810635c2a99052856014d216d66f39b"
   }
 }
