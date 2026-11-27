@@ -652,7 +652,7 @@ class BootstrapTests(Fixture):
         self.assertEqual(stat.S_IMODE((self.root / core.POLICY).stat().st_mode), 0o600)
         rule = (self.root / 'etc/sudoers.d/qacey-dev-deploy').read_text()
         self.assertIn('operator ALL=(root) NOPASSWD: NOSETENV:', rule)
-        self.assertIn('^apply [0-9a-f]{40}$', rule)
+        self.assertIn('apply ' + '[0-9a-f]' * 40, rule)
         self.assertNotIn('pause', rule)
         self.assertNotIn('dev-agent ALL', rule)
         state = core.load_state()

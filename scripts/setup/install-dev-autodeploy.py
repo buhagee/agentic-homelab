@@ -83,7 +83,7 @@ def sudoers(policy):
     return ('# Native opt-in updater: only a strict requested main commit is delegated.\n'
             'Defaults!/usr/local/sbin/qacey-dev-deploy env_reset, !setenv, '
             'secure_path="/usr/sbin:/usr/bin:/sbin:/bin"\n' + policy['operator'] +
-            ' ALL=(root) NOPASSWD: NOSETENV: /usr/local/sbin/qacey-dev-deploy ^apply [0-9a-f]{40}$\n')
+            ' ALL=(root) NOPASSWD: NOSETENV: /usr/local/sbin/qacey-dev-deploy apply ' + '[0-9a-f]' * 40 + '\n')
 
 
 def preflight_destinations():

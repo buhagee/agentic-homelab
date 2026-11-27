@@ -33,6 +33,19 @@
       ],
       "depNameTemplate": "@openchamber/web",
       "datasourceTemplate": "npm"
+    },
+    {
+      "customType": "regex",
+      "description": "Track the reviewed OpenCode release pin in release.json",
+      "managerFilePatterns": [
+        "/^infrastructure/dev-agent/release\\.json$/"
+      ],
+      "matchStrings": [
+        "\"opencode\": \\{\\s*\"version\": \"(?<currentValue>[^\"]+)\""
+      ],
+      "depNameTemplate": "anomalyco/opencode",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v?(?<version>.*)$"
     }
   ],
   "packageRules": [
@@ -188,6 +201,58 @@
       ],
       "matchPackageNames": [
         "@openchamber/web"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "automerge": false,
+      "addLabels": [
+        "major"
+      ]
+    },
+    {
+      "matchDatasources": [
+        "github-releases"
+      ],
+      "matchPackageNames": [
+        "anomalyco/opencode"
+      ],
+      "automerge": true,
+      "addLabels": [
+        "native-runtime"
+      ],
+      "postUpgradeTasks": {
+        "commands": [
+          "python3 scripts/maintenance/refresh-openchamber-release.py --opencode {{{newVersion}}}"
+        ],
+        "fileFilters": [
+          "infrastructure/dev-agent/**"
+        ],
+        "executionMode": "update"
+      }
+    },
+    {
+      "matchDatasources": [
+        "github-releases"
+      ],
+      "matchPackageNames": [
+        "anomalyco/opencode"
+      ],
+      "matchUpdateTypes": [
+        "minor"
+      ],
+      "minimumReleaseAge": "2 days",
+      "automerge": true,
+      "addLabels": [
+        "native-runtime"
+      ]
+    },
+    {
+      "matchDatasources": [
+        "github-releases"
+      ],
+      "matchPackageNames": [
+        "anomalyco/opencode"
       ],
       "matchUpdateTypes": [
         "major"

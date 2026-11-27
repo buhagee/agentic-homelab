@@ -1,55 +1,46 @@
-# Shared development account
+# Global OpenChamber & OpenCode guidance
 
-Use independent development clones under this account's `projects` directory.
-Read each repository's `AGENTS.md` before changing it. The operator's existing
-checkouts may run production services; do not change their ownership, share their
-Git metadata, or treat them as development worktrees.
+## Default response style (`caveman`)
 
-Codex and OpenCode share project files, this guidance and portable skills in
-`~/.agents/skills` or repository `.agents/skills`. Keep model choices, permissions,
-runtime plugins, login state and conversation history in each client's own
-configuration. Do not copy authentication stores.
+Use the `caveman` skill for every response by default.
 
-Before installing a skill, MCP server, or plugin, check the shared locations,
-the repository's configuration, and the relevant client's configuration for an
-existing installation. Reuse the existing pinned version and keep one owner per
-skill. When reporting an installation, include its version or revision, location,
-and the clients or repositories it serves.
+- Answer first, then reason, then next step.
+- Remove greetings, ceremony, recaps, and closers.
+- Keep code, commands, paths, API names, errors, numbers, units, and negations
+  exactly as written.
+- One idea per sentence. Clarity wins over compression.
+- Stop caveman style when the user says "stop caveman" or "normal mode".
 
-- Put account-wide portable skills in `~/.agents/skills` and project-specific
-  portable skills in the repository's `.agents/skills`. An existing reviewed
-  source checkout can be linked from the appropriate skills directory.
-- Put MCP definitions intended for both clients in Qacey's versioned
-  `infrastructure/dev-agent/shared/mcp.json`. Preview with `qacey-dev sync` and
-  apply with `qacey-dev sync --apply` after the updated baseline is published.
-- Install client-specific plugins and hooks through that client's native
-  configuration. Use the project's package manager for project dependencies
-  and the operator's administrative terminal for system packages.
+## Account layout: projects, skills, and MCPs
 
-Keep one active writer per worktree. For simultaneous tasks, create separate
-branches/worktrees from a development clone. When switching harnesses, leave a
-short handoff with the goal, branch, relevant files, validation completed and next
-steps. Read the actual changes and test results before continuing.
+- **Projects (`~/projects`):** Active development repositories only. Read each
+  repository's `AGENTS.md` before changing it. Keep one active writer per
+  worktree; create separate branches/worktrees from a development clone for
+  parallel work. Do not touch the operator's production checkouts.
+- **Skill source checkouts (`~/.local/share/`):** Third-party skill repositories
+  live under `~/.local/share/<name>` (not `~/projects`):
+  - Superpowers (`v7.0.2`): `~/.local/share/superpowers`
+  - Gstack (`v1.99.5.0`): `~/.local/share/gstack/src`
+- **Discovered skills (`~/.agents/skills` and `~/.config/opencode/skills`):**
+  - Account-wide portable skills: `~/.agents/skills` (`superpowers -> ~/.local/share/superpowers/skills`).
+  - OpenCode/OpenChamber global skills: `~/.config/opencode/skills` (curated `gstack-*` lenses, `caveman`, `gh-fix-ci`).
+  - Project-specific skills: `<repo>/.agents/skills`.
+  - Before installing a skill, MCP server, or plugin, check these locations first
+    and keep one owner per skill. Do not enable Gstack browser, shipping,
+    deployment, or outside-review tools.
+- **MCPs and plugins (`~/.config/opencode/opencode.json`):** Managed directly in
+  this account or via the OpenChamber app, not through the Qacey platform repo.
 
-Follow the owner's selected Superpowers workflow and curated Gstack lenses.
-Keep one installation owner per skill; host-specific plugins are installed for
-their own harness. Do not enable Gstack browser, shipping, deployment or
-outside-review tools. Use project-local Playwright CLI/skills for headless browser
-work when required; this server has no graphical desktop.
+## Server and Docker operations
 
-Edits, builds, tests and development networking within the authorised workspace
-are normal development work. For administrator operations, use `qacey-dev-ops`
-(including `qacey-dev-ops sudo -- <cmd>` authenticated via OpenChamber's private
-`openchamber_secret` card when enabled in `/etc/qacey-dev-ops/policy.json`) or
-prepare the exact command and purpose for the operator's own sudo terminal. Do
-not request passwords in plain-text chat, run agents as root, grant Docker or
-privileged device groups, or copy the operator's personal credentials. Keep
-tokens out of source, logs and handoffs.
-
-For host diagnostics and ops, use `qacey-dev-ops list`, `qacey-dev-ops monitor`,
-`qacey-dev-ops storage`, and `qacey-dev-ops prune` as enabled by policy.
-`qacey-dev-ops status gateway adapter` reports the development gateway's
-adapter status when granted. Check the gateway and the native units separately.
-
-Qacey deployments publish the baseline. Applying configuration, upgrading native
-runtimes and restarting coding services are separate deliberate operations.
+- Use `qacey-dev-ops` for host and container diagnostics/actions:
+  - `qacey-dev-ops list` — list allowed containers, systemd units, and flags.
+  - `qacey-dev-ops monitor` — CPU, load, memory, and mount metrics.
+  - `qacey-dev-ops storage` — disk usage, `/var/lib/docker` & `/var/lib/containerd` sizes, `docker system df`, and `docker container ls --all`.
+  - `qacey-dev-ops status|logs|restart|start|stop containers <service>` — manage allowlisted Qacey containers.
+  - `qacey-dev-ops status|logs units <unit>` — inspect allowlisted systemd units.
+  - `qacey-dev-ops prune` — reclaim unused Docker images and build cache under the deploy lock.
+- For root host operations not covered by a built-in `qacey-dev-ops` subcommand,
+  run `qacey-dev-ops sudo -- <command...>` via `openchamber_secret` (`secret.run`)
+  with environment variable `QACEY_SUDO_PASSWORD`. Never request passwords in
+  plain-text chat or store tokens in source, logs, or handoffs.

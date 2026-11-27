@@ -16,6 +16,7 @@ import sys
 NATIVE_RUNTIME_FILES = frozenset(
     {
         "infrastructure/dev-agent/release.json",
+        "infrastructure/dev-agent/deployment_probe.py",
         "infrastructure/dev-agent/runtime/openchamber/package.json",
         "infrastructure/dev-agent/runtime/openchamber/package-lock.json",
     }
