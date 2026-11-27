@@ -2,6 +2,8 @@
 Description=Qacey native OpenChamber development interface
 Wants=network-online.target
 After=network-online.target
+StartLimitIntervalSec=15min
+StartLimitBurst=3
 
 [Service]
 Type=simple
@@ -12,7 +14,12 @@ EnvironmentFile=/etc/qacey-dev/openchamber.env
 ExecStart=/usr/local/bin/qacey-dev openchamber
 UMask=0077
 Restart=on-failure
-RestartSec=5s
+RestartSec=15s
+MemoryAccounting=true
+MemoryHigh=8G
+MemoryMax=12G
+MemorySwapMax=2G
+OOMPolicy=kill
 TimeoutStopSec=45s
 KillMode=control-group
 NoNewPrivileges=true
