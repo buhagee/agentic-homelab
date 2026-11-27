@@ -220,8 +220,7 @@ class Host:
         units = {name: self.unit(name) for name in core.UNITS}
         containers = self.containers()
         gateway_active = bool(containers and containers['oauth']['running'])
-        if gateway_active and (not units[core.APP]['active'] or not units[core.SOCKET]['active']
-                               or not units[core.TMUX]['active']):
+        if gateway_active and (not units[core.APP]['active'] or not units[core.SOCKET]['active']):
             raise core.Blocked('active-gateway-prerequisites-inconsistent')
         if units[core.SOCKET]['active'] and not units[core.APP]['active']:
             raise core.Blocked('proxy-without-active-application')

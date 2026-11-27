@@ -525,6 +525,19 @@ class HostBoundaryTests(Fixture):
                 with self.subTest(action=action, unit=unit), self.assertRaises(core.Blocked): self.host.systemctl(action, unit)
             child.assert_not_called()
 
+    def test_snapshot_allows_active_gateway_when_tmux_is_stopped(self):
+        current = lifecycle()
+        current['units'][core.TMUX]['active'] = False
+        containers = {
+            'oauth': dict(id='1' * 64, running=True),
+            'adapter': dict(id='2' * 64, running=True),
+        }
+        with patch.object(self.host, 'unit', side_effect=lambda name: current['units'][name]), \
+             patch.object(self.host, 'containers', return_value=containers):
+            snap = self.host.snapshot()
+        self.assertTrue(snap['gateway_active'])
+        self.assertFalse(snap['units'][core.TMUX]['active'])
+
     def test_listener_requires_loopback_uid_and_actual_service_cgroup(self):
         net = self.root / 'proc/net'
         net.mkdir(parents=True)

@@ -16,12 +16,15 @@ import urllib.parse
 
 
 ROOT = Path(__file__).resolve().parents[3]
+RELEASE = json.loads((ROOT / 'infrastructure/dev-agent/release.json').read_text())
+OPENCHAMBER_VERSION = RELEASE['openchamber']['version']
+OPENCODE_VERSION = RELEASE['opencode']['version']
 spec = importlib.util.spec_from_file_location('qacey_test_deployment_probe', ROOT / 'infrastructure/dev-agent/deployment_probe.py')
 probe = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(probe)
 UI_PASSWORD = 'synthetic-ui-password-' + 'u' * 32
 BACKEND_PASSWORD = 'synthetic-backend-password-' + 'b' * 32
-BINARY = '/home/fixture/.local/share/qacey-dev/runtime/opencode-2.4.1/opencode'
+BINARY = f'/home/fixture/.local/share/qacey-dev/runtime/opencode-{OPENCODE_VERSION}/opencode'
 DIRECTORY = '/home/fixture/projects/first'
 
 
@@ -34,7 +37,7 @@ class Reply:
 class WireFixture:
     def __init__(self):
         self.seen, self.validations = [], []
-        self.health = dict(status='ok', openchamberVersion='2.8.0', openCodeRunning=True,
+        self.health = dict(status='ok', openchamberVersion=OPENCHAMBER_VERSION, openCodeRunning=True,
                            isOpenCodeReady=True, openCodeSecureConnection=True, openCodeAuthSource='user-env',
                            opencodeBinaryResolved=BINARY, opencodeBinarySource='env')
         self.ui_routes = {
@@ -50,7 +53,7 @@ class WireFixture:
             '/api/openchamber/workflows': {'runs': []},
         }
         self.backend_routes = {
-            '/api/info': {'version': '2.4.1', 'pid': os.getpid()},
+            '/api/info': {'version': OPENCODE_VERSION, 'pid': os.getpid()},
             '/api/session/active': {'data': {}},
             '/api/experimental/job': {'data': []},
             '/api/experimental/automation': {'data': []},
@@ -81,7 +84,7 @@ class WireFixture:
         return (port, role) in ((self.port, 'openchamber'), (self.backend_port, 'opencode'))
 
     def arguments(self):
-        return dict(port=self.port, expected_openchamber='2.8.0', expected_opencode='2.4.1',
+        return dict(port=self.port, expected_openchamber=OPENCHAMBER_VERSION, expected_opencode=OPENCODE_VERSION,
                     expected_binary=BINARY, ui_password=UI_PASSWORD, backend_password=BACKEND_PASSWORD,
                     validate_listener=self.validator)
 
